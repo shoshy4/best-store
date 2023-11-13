@@ -14,8 +14,7 @@ class Product(models.Model):
     description = models.TextField()
     price = models.FloatField()
     amount_in_stock = models.IntegerField()
-    image = models.ImageField()
-    admin = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    image = models.ImageField(upload_to='images/')
     categories = models.ManyToManyField(Category)
 
     def __str__(self):
@@ -30,7 +29,7 @@ class CartItem(models.Model):
     name = models.TextField()
     amount = models.FloatField()
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    cart = models.ForeignKey(Cart,  on_delete=models.CASCADE)
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.name
@@ -41,7 +40,7 @@ class PaymentDetails(models.Model):
     cvv = models.CharField(max_length=3)
     expiration_date = models.DateTimeField()
     amount = models.IntegerField()
-    owner = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
 
 
 class ShippingAddress(models.Model):
@@ -63,7 +62,7 @@ class Order(models.Model):
 
 class Feedback(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     text = models.TextField()
 
 
