@@ -1,78 +1,11 @@
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Count
 from rest_framework import serializers
+from rest_framework.serializers import raise_errors_on_nested_writes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
-
-
-class CategorySerializer(serializers.ModelSerializer):
-    name = serializers.CharField()
-
-    class Meta:
-        model = Category
-        fields = ['name']
-
-
-class CartSerializer(serializers.ModelSerializer):
-    customer = serializers.ReadOnlyField(source='cart.customer')
-
-    class Meta:
-        model = Cart
-        fields = ['customer']
-
-
-class ProductSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Product
-        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'categories']
-
-
-class CartItemSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = CartItem
-        fields = ['name', 'amount', 'product', 'cart']
-
-
-class PaymentDetailsSerializer(serializers.ModelSerializer):
-    customer = serializers.ReadOnlyField(source='payment-details.customer')
-
-    class Meta:
-        model = PaymentDetails
-        fields = ['card_number', 'cvv', 'expiration_date', 'amount', 'customer']
-
-
-class ShippingAddressSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = ShippingAddress
-        fields = ['street_address', 'city', 'state', 'zip_code']
-
-
-class OrderSerializer(serializers.ModelSerializer):
-    customer = serializers.ReadOnlyField(source='order.customer')
-
-    class Meta:
-        model = Order
-        fields = ['customer', 'product_list', 'total_price', 'shipping_address', 'payment_details',
-                  'order_status', 'paid']
-
-
-class FeedbackSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Feedback
-        fields = ['product', 'customer', 'text']
-
-
-class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['name'] = user.username
-        return token
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -99,3 +32,101 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data.pop('confirm_password')  # added
         user.save()
         return user
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, use_url=True)
+
+    class Meta:
+        model = Product
+        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category']
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    name = serializers.CharField()
+    products = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ['name', 'products']
+
+    def get_products(self, obj):
+        products = obj.product_set.all()
+        response = ProductSerializer(products, many=True).data
+        return response
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CartItem
+        fields = ['amount', 'product']
+
+
+class CartSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+    cart_items = CartItemSerializer(many=True)
+    status = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Cart
+        fields = ['customer', "cart_items", 'status', 'total_price']
+
+
+class PaymentDetailsSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+    expiration_date = serializers.DateTimeField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ['card_number', 'cvv', 'expiration_date', 'customer']
+
+
+class ShippingAddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShippingAddress
+        fields = ['street_address', 'city', 'state', 'zip_code', 'customer']
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+    product_list = CartSerializer(read_only=True)
+    order_status = serializers.ReadOnlyField(source='order.order_status')
+    total_price = serializers.ReadOnlyField(source='order.total_price')
+    paid = serializers.ReadOnlyField(source='order.paid')
+
+    class Meta:
+        model = Order
+        fields = ['customer', 'product_list', 'total_price', 'shipping_address', 'payment_details',
+                  'order_status', 'paid']
+
+
+class OrderAdminSerializer(serializers.ModelSerializer):
+    product_list = CartSerializer()
+    customer = UserSerializer()
+
+    class Meta:
+        model = Order
+        fields = ['customer', 'product_list', 'total_price', 'shipping_address', 'payment_details',
+                  'order_status', 'paid']
+
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+    product = ProductSerializer()
+    rate_count_dict = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Feedback
+        fields = ['product', 'customer', 'text', 'rate', 'rate_count_dict']
+
+    def get_rate_count_dict(self, obj):
+        dict = Feedback.objects.values('rate').annotate(rate_count=Count('rate'))
+        return dict
+
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['name'] = user.username
+        return token
