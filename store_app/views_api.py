@@ -104,7 +104,6 @@ class CartItemCreateList(generics.ListCreateAPIView):
         if not cart:
             # create a new Cart with the new data from response
             cart = Cart.objects.create(customer=self.request.user)
-            cart.status="O"
         else:
             cart = cart[0]
         product = get_object_or_404(Product, pk=data["product"])
@@ -124,11 +123,16 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     pagination_class = PageNumberPagination
 
     def get_queryset(self):
-        items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart__status__icontains="open")
-        if self.kwargs.get('pk') is not None:
-            return items.filter(cart__status__icontains="open")
-        else:
-            return items.filter(cart_id=self.kwargs.get('pk'), cart__status__icontains="open")
+        return CartItem.objects.filter(cart__customer=self.request.user).filter(cart__status="O")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        cart = Cart.objects.filter(status="O")
+        cart_items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart=cart)
+        if not cart_items:
+            cart.delete()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class OrderCreateList(generics.ListCreateAPIView):
@@ -137,34 +141,31 @@ class OrderCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user)
+        return Order.objects.filter(customer=self.request.user).order_by('-created_date')
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        cart = Cart.objects.filter(pk=self.kwargs.get('pk'))
+        cart = Cart.objects.filter(status="O")
         if not cart:
-            headers = self.get_success_headers(serializer.data)
-            return Response({'Message': 'Not found a Cart with this pk'},
-                            status=status.HTTP_404_NOT_FOUND, headers=headers)
-        open_cart = Cart.objects.filter(status__icontains="open")
-        if not open_cart:
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'No cart found with status Open'},
                             status=status.HTTP_404_NOT_FOUND, headers=headers)
-        # remove below line - no longer needed
-        cart = cart.prefetch_related(
-            Prefetch('cart_items', queryset=CartItem.objects.select_related('product'),
-                     to_attr='item'))
-        cart.update(status='closed')
-        tmp_status = "in process"
-        if (not self.request.data.get("shipping_address")) or (self.request.data.get("shipping_address") == ""):
-            tmp_status += ". Please add shipping_address"
-        if (not self.request.data.get("payment_details")) or (self.request.data.get("payment_details") == ""):
-            tmp_status += ". Please add payment_details"
+        # # remove below line - no longer needed
+        # cart = cart.prefetch_related(
+        #     Prefetch('cart_items', queryset=CartItem.objects.select_related('product'),
+        #              to_attr='item'))
+        cart.update(status='C')
+        tmp_status = 1
+        payment_details = PaymentDetails.objects.filter(default=True)
+        shipping_address = ShippingAddress.objects.filter(defaut=True)
+        if not shipping_address:
+            tmp_status = 3
+        if not payment_details:
+            tmp_status = 2
         total_price = cart[0].total_price
         serializer.save(product_list=cart[0], customer=self.request.user, total_price=total_price,
-                        order_status=tmp_status)
+                        order_status=tmp_status, payment_details=payment_details[0], shipping_address=shipping_address[0])
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 

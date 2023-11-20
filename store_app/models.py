@@ -57,6 +57,7 @@ class PaymentDetails(models.Model):
     cvv = models.CharField(max_length=3)
     expiration_date = models.DateField()
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    default = models.BooleanField(default=True)
 
 
 class ShippingAddress(models.Model):
@@ -65,6 +66,7 @@ class ShippingAddress(models.Model):
     state = models.CharField(max_length=50, blank=True, null=True)
     zip_code = models.CharField(max_length=10)
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    default = models.BooleanField(default=True)
 
 
 class Order(models.Model):
@@ -83,7 +85,7 @@ class Order(models.Model):
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
     order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=1)
     paid = models.BooleanField(default=False)
-    created = models.DateTimeField(default=timezone.now)
+    created_date = models.DateTimeField(default=timezone.now)
 
 
 class Feedback(models.Model):
