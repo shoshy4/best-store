@@ -32,7 +32,11 @@ class CategoryFilter(filters.FilterSet):
 
 
 class CartFilter(filters.FilterSet):
-    status = filters.CharFilter(lookup_expr='icontains')
+    STATUS_CHOICES = (
+        ('0', "Open"),
+        ('c', "Closed"),
+    )
+    status = filters.ChoiceFilter(choices=STATUS_CHOICES)
     total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
     customer = filters.CharFilter(lookup_expr='icontains', field_name="customer__username")
 

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.conf.urls.static import static
 
 from .views_api import CategoryCreateList, CategoryUpdateDetailRemove, ProductCreateList, ProductUpdateDetailRemove, \
@@ -15,10 +16,9 @@ urlpatterns = [
     path('product/<int:pk>/feedback/', FeedbackCreateList.as_view(), name="feedback_list_create_api"),
     path('product/<int:pk>/feedback/<int:feedback_pk>/', FeedbackCreateList.as_view(),
          name="feedback_update_detail_remove_api"),
-    path('all_orders/', OrderList.as_view(), name="order_list_api"),
-    path('items/', CartItemCreateList.as_view(), name="item_create_list_remove_api"),
-    path('items/<int:pk>/', CartItemUpdateDetailRemove.as_view(), name="item_update_detail_remove_api"),
-    path('cart/', CartCreateList.as_view(), name="cart_list_create_api"),
+    path('orders/', OrderList.as_view(), name="order_list_api"),
+    path('cart/', CartItemCreateList.as_view(), name="item_create_list_remove_api"),
+    path('cart/items/<int:pk>/', CartItemUpdateDetailRemove.as_view(), name="item_update_detail_remove_api"),
     path('cart/<int:pk>/', CartUpdateDetailRemove.as_view(), name="cart_update_detail_remove_api"),
     path('cart/<int:pk>/items/', CartItemCreateList.as_view(), name="cart_item_list_create_api"),
     path('cart/<int:pk>/items/<int:items_pk>', CartItemUpdateDetailRemove.as_view(),
@@ -33,4 +33,8 @@ urlpatterns = [
     path('shipping-address/', ShippingAddressCreateList.as_view(), name="shipping_address_list_create_api"),
     path('shipping-address/<int:pk>/', ShippingAddressUpdateDetailRemove.as_view(),
          name="shipping_address_update_detail_remove_api"),
+
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

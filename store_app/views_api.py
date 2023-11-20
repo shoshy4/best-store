@@ -85,35 +85,31 @@ class CartUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
 class CartItemCreateList(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = CartItemSerializer
     pagination_class = PageNumberPagination
 
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return CartItemSerializer
+        return CartSerializer
+
     def get_queryset(self):
-        items = CartItem.objects.select_related('product').filter(cart__customer=self.request.user)
-        if self.kwargs.get('pk') is None:
-            return items.filter(cart__status__icontains="open")
-        else:
-            return items.filter(cart_id=self.kwargs.get('pk'), cart__status__icontains="open")
+        return Cart.objects.filter(customer=self.request.user, status="O").prefetch_related(
+            Prefetch('cart_items',
+                     queryset=CartItem.objects.select_related('product'),
+                     to_attr='item'))
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        cart = None
-        if self.kwargs.get('pk') is None:
-            cart = Cart.objects.filter(status__icontains="open")
-            if not cart:
-                # create a new Cart with the new data from response
-                cart = Cart.objects.create(customer=self.request.user)
-            else:
-                cart = cart[0]
-            product = get_object_or_404(Product, pk=data["product"])
-            cart.total_price += decimal.Decimal(self.request.data["amount"]) * product.price
-            cart.save()
+        cart = Cart.objects.filter(status="O")
+        if not cart:
+            # create a new Cart with the new data from response
+            cart = Cart.objects.create(customer=self.request.user)
+            cart.status="O"
         else:
-            # get the Cart object by pk and update its total price
-            cart = get_object_or_404(Cart, pk=self.kwargs.get('pk'))
-            product = get_object_or_404(Product, pk=data["product"])
-            cart.total_price += (decimal.Decimal(self.request.data["amount"]) * product.price)
-            cart.save()
+            cart = cart[0]
+        product = get_object_or_404(Product, pk=data["product"])
+        cart.total_price += decimal.Decimal(self.request.data["amount"]) * product.price
+        cart.save()
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         # perform_create method
@@ -194,7 +190,7 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
             instance.order_status.replace(". Please add shipping_address", ".")
             instance.save()
         if ("payment_details" in instance.order_status) and ((self.request.data.get("payment_details")) or not
-                                                             (self.request.data.get("payment_details") == "")):
+        (self.request.data.get("payment_details") == "")):
             instance.order_status = instance.order_status.replace(". Please add payment_details", ".")
             instance.save()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
