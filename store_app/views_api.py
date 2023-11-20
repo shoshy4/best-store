@@ -165,7 +165,8 @@ class OrderCreateList(generics.ListCreateAPIView):
             tmp_status = 2
         total_price = cart[0].total_price
         serializer.save(product_list=cart[0], customer=self.request.user, total_price=total_price,
-                        order_status=tmp_status, payment_details=payment_details[0], shipping_address=shipping_address[0])
+                        order_status=tmp_status, payment_details=payment_details[0],
+                        shipping_address=shipping_address[0])
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -177,11 +178,6 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         if self.request.user.is_staff:
             return OrderAdminSerializer
         return OrderSerializer
-
-    def get_object(self):
-        queryset = self.get_queryset()
-        obj = get_object_or_404(queryset, pk=self.kwargs.get('order_pk'))
-        return obj
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -210,10 +206,6 @@ class OrderChangeStatus(generics.UpdateAPIView):
     serializer_class = OrderAdminSerializer
     queryset = Order.objects.all()
 
-    def get_object(self):
-        queryset = self.get_queryset()
-        return get_object_or_404(queryset, pk=self.kwargs.get('order_pk'))
-
 
 class PaymentDetailsCreateList(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
@@ -222,8 +214,20 @@ class PaymentDetailsCreateList(generics.ListCreateAPIView):
     def get_queryset(self):
         return PaymentDetails.objects.filter(customer=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(customer=self.request.user)
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        payment_details = PaymentDetails.objects.filter(default=True, customer=self.request.user)
+        default_value = False
+        if not payment_details:
+            default_value = True
+        elif payment_details[0].default and data["default"]:
+            payment_details.update(default=False)
+            default_value = True
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(customer=self.request.user, default=default_value)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class PaymentDetailsUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
@@ -233,6 +237,28 @@ class PaymentDetailsUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return PaymentDetails.objects.filter(customer=self.request.user)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data
+        if "default" in data:
+            default_value = data["default"]
+            if default_value:
+                PaymentDetails.objects.all(customer=self.request.user).update(default=False)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.default:
+            PaymentDetails.objects.filter(customer=self.request.user).last().update(default=True)
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ShippingAddressCreateList(generics.ListCreateAPIView):
     permission_classes = [IsAdminPermission]
@@ -240,6 +266,21 @@ class ShippingAddressCreateList(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return ShippingAddress.objects.filter(customer=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        shipping_address = ShippingAddress.objects.filter(default=True, customer=self.request.user)
+        default_value = False
+        if not shipping_address:
+            default_value = True
+        elif shipping_address[0].default and data["default"]:
+            shipping_address.update(default=False)
+            default_value = True
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(customer=self.request.user, default=default_value)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class ShippingAddressUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
