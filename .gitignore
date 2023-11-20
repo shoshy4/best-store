@@ -10,8 +10,8 @@ myvenv/
 # Database
 #deleted
 
-# Static folder at project root
-/static/
+# Media folder at project root
+media
 
 # Windows
 Thumbs.db*
