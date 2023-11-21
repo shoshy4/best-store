@@ -100,6 +100,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         data = request.data
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
         cart = Cart.objects.filter(status="O")
         if not cart:
             # create a new Cart with the new data from response
@@ -107,10 +109,17 @@ class CartItemCreateList(generics.ListCreateAPIView):
         else:
             cart = cart[0]
         product = get_object_or_404(Product, pk=data["product"])
+        if product.amount_in_stock == 0:
+            headers = self.get_success_headers(serializer.data)
+            return Response({'Message': 'This product is out of stock'},
+                            status=status.HTTP_404_NOT_FOUND, headers=headers)
+        if product.amount_in_stock < data["amount"]:
+            headers = self.get_success_headers(serializer.data)
+            return Response({'Message': 'You are trying to add more than exists of this product'},
+                            status=status.HTTP_404_NOT_FOUND, headers=headers)
+        product.amount_in_stock = product.amount_in_stock - data["amount"]
         cart.total_price += decimal.Decimal(self.request.data["amount"]) * product.price
         cart.save()
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
         # perform_create method
         serializer.save(cart=cart)
         headers = self.get_success_headers(serializer.data)
