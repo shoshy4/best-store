@@ -23,7 +23,7 @@ class Category(models.Model):
 class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField()
-    price = models.DecimalField(max_digits=5, decimal_places=2)
+    price = models.DecimalField(max_digits=7, decimal_places=2)
     amount_in_stock = models.IntegerField(validators=[validate_above_zero])
     image = models.ImageField(upload_to='images/', blank=True, null=True)
     category = models.ManyToManyField(Category)
@@ -39,7 +39,7 @@ class Cart(models.Model):
     )
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     status = models.CharField(choices=STATUS_CHOICES, default='O', max_length=1)
-    total_price = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    total_price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
 
 
 class CartItem(models.Model):
@@ -70,16 +70,17 @@ class ShippingAddress(models.Model):
 
 class Order(models.Model):
     ORDER_STATUS_CHOICES = (
-        (1, "In process"),
+        (1, "Paid. In process"),
         (2, "In process. Please add payment_details"),
         (3, "In process. Please add shipping_address"),
         (4, "In process. Please add payment_details and shipping_address"),
-        (5, "Closed"),
+        (5, "Sent to customer's shipping address"),
+        (6, "Received")
     )
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     product_list = models.OneToOneField(Cart, related_name="cart", on_delete=models.CASCADE)
-    total_price = models.DecimalField(max_digits=5, decimal_places=2)
+    total_price = models.DecimalField(max_digits=7, decimal_places=2)
     shipping_address = models.ForeignKey(ShippingAddress, related_name='shipping_address', on_delete=models.CASCADE,
                                          blank=True, null=True)
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
@@ -100,8 +101,6 @@ class Feedback(models.Model):
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     rate = models.PositiveSmallIntegerField(choices=RATE_CHOICES, null=True)
     text = models.TextField(blank=True, null=True)
-
-
 
 
 

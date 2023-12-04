@@ -16,7 +16,8 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-PAYMENT_HOST = 'localhost:8000'
+PAYPAL_CLIENT_ID = 'AZ8hfJbwCkgJdRS7_NVv2lS6jvyIYPCub9_RZD3EOC85iSs4PSpHQe2BK2Bf4X_E-9wdREmpOXH7Dcul'
+PAYPAL_SECRET = 'EIc8rf_dRQa8TRmjUafPV6NtA_mFu8VFtmOmyyyxLhApcYdKYBGX5dxsYXzwuZ-qJWmyI7lrJtflwTSf'
 
 MEDIA_ROOT = os.path.join(os.path.dirname(BASE_DIR), 'mediafiles')
 
@@ -33,7 +34,8 @@ SECRET_KEY = 'django-insecure-u_)arhe7-7cf1k09)$_g2_^yb#_xl$)h-#389ya5yo%*a0gy!%
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-
+STRIPE_PUBLIC_KEY = 'your_stripe_public_key'
+STRIPE_PRIVATE_KEY = 'your_stripe_private_key'
 ALLOWED_HOSTS = ['127.0.0.1']
 
 # Application definition
@@ -140,6 +142,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/

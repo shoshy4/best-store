@@ -91,12 +91,21 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
         fields = ['street_address', 'city', 'state', 'zip_code', 'customer']
 
 
+class PaymentSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+    paid = serializers.BooleanField(read_only=True, source='payment.paid')
+
+    class Meta:
+        model = PaymentDetails
+        fields = ['amount', 'description', 'customer', 'paid']
+
+
 class OrderSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     product_list = CartSerializer(read_only=True)
     order_status = serializers.CharField(source='get_order_status_display', read_only=True)
-    total_price = serializers.ReadOnlyField(source='order.total_price')
-    paid = serializers.ReadOnlyField(source='order.paid')
+    total_price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True, source='order.total_price')
+    paid = serializers.BooleanField(read_only=True, source='order.paid')
 
     class Meta:
         model = Order
