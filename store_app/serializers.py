@@ -1,7 +1,7 @@
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework import serializers
 from rest_framework.serializers import raise_errors_on_nested_writes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -36,10 +36,14 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, use_url=True)
+    rate_count_dict = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
-        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category']
+        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category', 'rate_count_dict']
+
+    def get_rate_count_dict(self, obj):
+        return Feedback.objects.filter(product_id=obj.id).values('rate').annotate(rate_count=Count('rate'))
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -65,7 +69,7 @@ class CartItemSerializer(serializers.ModelSerializer):
 class CartSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     cart_items = CartItemSerializer(many=True)
-    status = serializers.ReadOnlyField()
+    status = serializers.CharField(source='get_status_display', read_only=True)
 
     class Meta:
         model = Cart
@@ -90,7 +94,7 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     product_list = CartSerializer(read_only=True)
-    order_status = serializers.ReadOnlyField(source='order.order_status')
+    order_status = serializers.CharField(source='get_order_status_display', read_only=True)
     total_price = serializers.ReadOnlyField(source='order.total_price')
     paid = serializers.ReadOnlyField(source='order.paid')
 
@@ -103,6 +107,7 @@ class OrderSerializer(serializers.ModelSerializer):
 class OrderAdminSerializer(serializers.ModelSerializer):
     product_list = CartSerializer()
     customer = UserSerializer()
+    order_status = serializers.CharField(source='get_order_status_display')
 
     class Meta:
         model = Order
@@ -112,16 +117,11 @@ class OrderAdminSerializer(serializers.ModelSerializer):
 
 class FeedbackSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
-    product = ProductSerializer()
-    rate_count_dict = serializers.SerializerMethodField()
+    product = ProductSerializer(read_only=True)
 
     class Meta:
         model = Feedback
-        fields = ['product', 'customer', 'text', 'rate', 'rate_count_dict']
-
-    def get_rate_count_dict(self, obj):
-        dict = Feedback.objects.values('rate').annotate(rate_count=Count('rate'))
-        return dict
+        fields = ['product', 'customer', 'text', 'rate']
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):

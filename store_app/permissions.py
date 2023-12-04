@@ -1,6 +1,6 @@
 from rest_framework import permissions
 
-from store_app.models import Cart
+from store_app.models import Order
 
 SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
 
@@ -23,6 +23,6 @@ class IsOwnerOrAdminPermission(permissions.BasePermission):
 class IsOwnerOfCartOrAdminPermission(permissions.BasePermission):
 
     def has_permission(self, request, view):
-        cart = Cart.objects.filter(pk=view.kwargs.get('pk'))
-        return cart[0].customer == request.user or request.user.is_staff
+        order = Order.objects.filter(pk=view.kwargs.get('pk'))
+        return order[0].product_list__customer == request.user or request.user.is_staff
 

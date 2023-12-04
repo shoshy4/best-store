@@ -37,9 +37,8 @@ class Cart(models.Model):
         ('O', "Open"),
         ('C', "Closed"),
     )
-
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
-    status = models.CharField(choices=STATUS_CHOICES, default='o', max_length=1)
+    status = models.CharField(choices=STATUS_CHOICES, default='O', max_length=1)
     total_price = models.DecimalField(max_digits=5, decimal_places=2, default=0)
 
 
@@ -74,7 +73,8 @@ class Order(models.Model):
         (1, "In process"),
         (2, "In process. Please add payment_details"),
         (3, "In process. Please add shipping_address"),
-        (4, "Closed"),
+        (4, "In process. Please add payment_details and shipping_address"),
+        (5, "Closed"),
     )
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)

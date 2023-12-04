@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from .filters import ProductFilter, OrderFilter, CategoryFilter, CartFilter
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
-from .permissions import IsAdminPermission, IsOwnerOrAdminPermission, IsOwnerOfCartOrAdminPermission
+from .permissions import IsAdminPermission, IsOwnerOrAdminPermission
 from .serializers import CategorySerializer, ProductSerializer, CartSerializer, CartItemSerializer, \
     PaymentDetailsSerializer, ShippingAddressSerializer, OrderSerializer, FeedbackSerializer, UserSerializer, \
     OrderAdminSerializer
@@ -93,7 +93,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        return Cart.objects.filter(customer=self.request.user, status="O").prefetch_related(
+        cart = Cart.objects.filter(customer=self.request.user, status='O')
+        return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
                      to_attr='item'))
@@ -117,7 +118,6 @@ class CartItemCreateList(generics.ListCreateAPIView):
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'You are trying to add more than exists of this product'},
                             status=status.HTTP_404_NOT_FOUND, headers=headers)
-        product.amount_in_stock = product.amount_in_stock - data["amount"]
         cart.total_price += decimal.Decimal(self.request.data["amount"]) * product.price
         cart.save()
         # perform_create method
@@ -145,7 +145,7 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
 
 class OrderCreateList(generics.ListCreateAPIView):
-    permission_classes = [IsOwnerOfCartOrAdminPermission]
+    permission_classes = [IsOwnerOrAdminPermission]
     serializer_class = OrderSerializer
     pagination_class = PageNumberPagination
 
@@ -166,12 +166,17 @@ class OrderCreateList(generics.ListCreateAPIView):
         #              to_attr='item'))
         cart.update(status='C')
         tmp_status = 1
+        flag = False
         payment_details = PaymentDetails.objects.filter(default=True)
         shipping_address = ShippingAddress.objects.filter(defaut=True)
         if not shipping_address:
             tmp_status = 3
+            flag = True
         if not payment_details:
-            tmp_status = 2
+            if flag:
+                tmp_status = 4
+            else:
+                tmp_status = 2
         total_price = cart[0].total_price
         serializer.save(product_list=cart[0], customer=self.request.user, total_price=total_price,
                         order_status=tmp_status, payment_details=payment_details[0],
@@ -181,7 +186,7 @@ class OrderCreateList(generics.ListCreateAPIView):
 
 
 class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsOwnerOfCartOrAdminPermission]
+    permission_classes = [IsOwnerOrAdminPermission]
 
     def get_serializer_class(self):
         if self.request.user.is_staff:
@@ -191,17 +196,23 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        flag = False
+        tmp_status = 1
         if ("shipping_address" in instance.order_status) and ((self.request.data.get("shipping_address"))
                                                               or not (self.request.data.get("shipping_address") == "")):
-            instance.order_status.replace(". Please add shipping_address", ".")
+            tmp_status = 3
+            flag = True
             instance.save()
-        if ("payment_details" in instance.order_status) and ((self.request.data.get("payment_details")) or not
-        (self.request.data.get("payment_details") == "")):
-            instance.order_status = instance.order_status.replace(". Please add payment_details", ".")
+        if ("payment_details" in instance.order_status) and ((self.request.data.get("payment_details"))
+                                                             or not (self.request.data.get("payment_details") == "")):
+            if flag:
+                tmp_status = 4
+            else:
+                tmp_status = 2
             instance.save()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(order_status=tmp_status)
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
         return Response(serializer.data)
@@ -299,23 +310,49 @@ class ShippingAddressUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return ShippingAddress.objects.filter(customer=self.request.user)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data
+        if "default" in data:
+            default_value = data["default"]
+            if default_value:
+                ShippingAddress.objects.all(customer=self.request.user).update(default=False)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.default:
+            ShippingAddress.objects.filter(customer=self.request.user).last().update(default=True)
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class FeedbackCreateList(generics.ListCreateAPIView):
-    permission_classes = [IsAdminPermission]
+    permission_classes = [IsAuthenticated]
     serializer_class = FeedbackSerializer
 
     def get_queryset(self):
-        rate_count_dict = Feedback.objects.values('rate').annotate(rate_count=Count('rate'))
         return Feedback.objects.filter(product_id=self.kwargs.get('pk'))
+
+    def perform_create(self, serializer):
+        product = get_object_or_404(Product, pk=self.kwargs.get('pk'))
+        serializer.save(customer=self.request.user, product=product)
 
 
 class FeedbackUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsOwnerOrAdminPermission]
     serializer_class = FeedbackSerializer
-
-    def get_queryset(self):
-        return Feedback.objects.filter(product_id=self.kwargs.get('pk'), customer=self.request.user)
+    queryset = Feedback.objects.all()
 
     def get_object(self):
         queryset = self.get_queryset()
-        return get_object_or_404(queryset, pk=self.kwargs.get('feedback_pk'))
+        obj = get_object_or_404(queryset, pk=self.kwargs.get('feedback_pk'))
+        self.check_object_permissions(self.request, obj)
+
+        return obj
