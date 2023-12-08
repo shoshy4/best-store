@@ -1,11 +1,10 @@
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from django.db.models import Count, Q
-from rest_framework import serializers
-from rest_framework.serializers import raise_errors_on_nested_writes
+from django.db.models import Count
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
+from rest_framework import serializers
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -61,9 +60,11 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
+
     class Meta:
         model = CartItem
-        fields = ['amount', 'product']
+        fields = ['amount', 'product', 'price']
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -78,26 +79,19 @@ class CartSerializer(serializers.ModelSerializer):
 
 class PaymentDetailsSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
-    expiration_date = serializers.DateTimeField()
+    expiration_date = serializers.DateField()
 
     class Meta:
         model = PaymentDetails
-        fields = ['card_number', 'cvv', 'expiration_date', 'customer']
+        fields = ['card_number', 'cvv', 'expiration_date', 'customer', 'default']
 
 
 class ShippingAddressSerializer(serializers.ModelSerializer):
+    customer = UserSerializer(read_only=True)
+
     class Meta:
         model = ShippingAddress
-        fields = ['street_address', 'city', 'state', 'zip_code', 'customer']
-
-
-class PaymentSerializer(serializers.ModelSerializer):
-    customer = UserSerializer(read_only=True)
-    paid = serializers.BooleanField(read_only=True, source='payment.paid')
-
-    class Meta:
-        model = PaymentDetails
-        fields = ['amount', 'description', 'customer', 'paid']
+        fields = ['street_address', 'city', 'state', 'zip_code', 'customer', 'default']
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -106,22 +100,24 @@ class OrderSerializer(serializers.ModelSerializer):
     order_status = serializers.CharField(source='get_order_status_display', read_only=True)
     total_price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True, source='order.total_price')
     paid = serializers.BooleanField(read_only=True, source='order.paid')
+    created_date = serializers.DateTimeField(format="%m/%d/%Y %H:%M")
 
     class Meta:
         model = Order
         fields = ['customer', 'product_list', 'total_price', 'shipping_address', 'payment_details',
-                  'order_status', 'paid']
+                  'order_status', 'paid', 'created_date']
 
 
 class OrderAdminSerializer(serializers.ModelSerializer):
     product_list = CartSerializer()
     customer = UserSerializer()
     order_status = serializers.CharField(source='get_order_status_display')
+    created_date = serializers.DateTimeField(format="%m/%d/%Y %H:%M")
 
     class Meta:
         model = Order
         fields = ['customer', 'product_list', 'total_price', 'shipping_address', 'payment_details',
-                  'order_status', 'paid']
+                  'order_status', 'paid', 'created_date']
 
 
 class FeedbackSerializer(serializers.ModelSerializer):

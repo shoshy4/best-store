@@ -35,6 +35,7 @@ class Product(models.Model):
 class Cart(models.Model):
     STATUS_CHOICES = (
         ('O', "Open"),
+        ('P', 'Being processed'),
         ('C', "Closed"),
     )
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
@@ -45,6 +46,7 @@ class Cart(models.Model):
 class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     amount = models.IntegerField()
+    price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     cart = models.ForeignKey(Cart, related_name="cart_items", on_delete=models.CASCADE)
 
     def __str__(self):
@@ -56,7 +58,7 @@ class PaymentDetails(models.Model):
     cvv = models.CharField(max_length=3)
     expiration_date = models.DateField()
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
-    default = models.BooleanField(default=False, blank=True)
+    default = models.BooleanField(default=False, blank=True, null=True)
 
 
 class ShippingAddress(models.Model):
@@ -75,7 +77,8 @@ class Order(models.Model):
         (3, "In process. Please add shipping_address"),
         (4, "In process. Please add payment_details and shipping_address"),
         (5, "Sent to customer's shipping address"),
-        (6, "Received")
+        (6, "Delivered"),
+        (7, "Received")
     )
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)

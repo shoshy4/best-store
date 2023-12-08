@@ -16,8 +16,10 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-PAYPAL_CLIENT_ID = 'AZ8hfJbwCkgJdRS7_NVv2lS6jvyIYPCub9_RZD3EOC85iSs4PSpHQe2BK2Bf4X_E-9wdREmpOXH7Dcul'
-PAYPAL_SECRET = 'EIc8rf_dRQa8TRmjUafPV6NtA_mFu8VFtmOmyyyxLhApcYdKYBGX5dxsYXzwuZ-qJWmyI7lrJtflwTSf'
+STRIPE_SECRET_KEY = \
+    'sk_test_51OK0WADvZiB9kCJyWqbckESf7ldIlGYa05ygnidro20RT1XREQckSiC9HFgNA3DVBVKoZimvDIMqA7QOtPo9cZGO00IERuAu8X'
+STRIPE_PUBLISHABLE_KEY = \
+    'pk_test_51OK0WADvZiB9kCJypoyUqMJcu9ji7mtAha7QXxfymVcCjeifHYc86AraWH9UR60rgk3wkH8LMpipFPP58ktcIrNY00lre9oEmv '
 
 MEDIA_ROOT = os.path.join(os.path.dirname(BASE_DIR), 'mediafiles')
 

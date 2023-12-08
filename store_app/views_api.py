@@ -1,16 +1,16 @@
 import decimal
+import json
 
-import requests
 from django.contrib.auth.models import User
+from django.core import serializers
 from django.db.models import Prefetch, Count
+from django.http import JsonResponse
 from django_filters import rest_framework as filters
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
-from store import settings
 from .filters import ProductFilter, OrderFilter, CategoryFilter, CartFilter
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
 from .permissions import IsAdminPermission, IsOwnerOrAdminPermission
@@ -18,77 +18,6 @@ from .serializers import CategorySerializer, ProductSerializer, CartSerializer, 
     PaymentDetailsSerializer, ShippingAddressSerializer, OrderSerializer, FeedbackSerializer, UserSerializer, \
     OrderAdminSerializer
 from rest_framework import generics, status
-import json
-import base64
-
-
-def PaypalToken(client_ID, client_Secret):
-    url = "https://api.sandbox.paypal.com/v1/oauth2/token"
-    data = {
-        "client_id": client_ID,
-        "client_secret": client_Secret,
-        "grant_type": "client_credentials"
-    }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": "Basic {0}".format(base64.b64encode((client_ID + ":" + client_Secret).encode()).decode())
-    }
-
-    token = requests.post(url, data, headers=headers)
-    return token.json()['access_token']
-
-
-class CreateOrderViewRemote(APIView):
-
-    def get(self, request):
-        token = PaypalToken(settings.PAYPAL_CLIENT_ID, settings.PAYPAL_SECRET)
-
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-        }
-        json_data = {
-            "intent": "CAPTURE",
-            "application_context": {
-                "notify_url": "http://127.0.0.1:8000/",
-                "return_url": "http://127.0.0.1:8000/",  # change to your doma$
-                "cancel_url": "http://127.0.0.1:8000/",  # change to your domain
-                "brand_name": "BESTSTORE SANDBOX",
-                "landing_page": "BILLING",
-                "shipping_preference": "NO_SHIPPING",
-                "user_action": "CONTINUE"
-            },
-            "purchase_units": [
-                {
-                    "reference_id": "294375635",
-                    "description": "African Art and Collectibles",
-
-                    "custom_id": "CUST-AfricanFashion",
-                    "soft_descriptor": "AfricanFashions",
-                    "amount": {
-                        "currency_code": "USD",
-                        "value": "2"  # amount,
-                    },
-                }
-            ]
-        }
-        response = requests.post('https://api-m.sandbox.paypal.com/v2/checkout/orders', headers=headers, json=json_data)
-        order_id = response.json()['id']
-        linkForPayment = response.json()['links'][1]['href']
-        return linkForPayment
-
-
-class CaptureOrderView(APIView):
-    # capture order aims to check whether the user has authorized payments.
-    def get(self, request):
-        token = request.data.get('token')
-        # the access token we used above for creating an order, or call the function for generating the token
-        capture_url = request.data.get('url')
-        # captureurl = 'https://api.sandbox.paypal.com/v2/checkout/orders/6KF61042TG097104C/capture'
-        # # see transaction status
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + token}
-        response = requests.post(capture_url, headers=headers)
-        return Response(response.json())
 
 
 class CategoryCreateList(generics.ListCreateAPIView):
@@ -138,25 +67,6 @@ class ProductUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.prefetch_related('category').all()
 
 
-class CartCreateList(generics.ListCreateAPIView):
-    permission_classes = [IsAdminUser]
-    serializer_class = CartSerializer
-    pagination_class = PageNumberPagination
-    filter_backends = (filters.DjangoFilterBackend,)
-    filterset_class = CartFilter
-    queryset = Cart.objects.prefetch_related('cart_items').all()
-
-    def perform_create(self, serializer):
-        serializer.save(customer=self.request.user)
-
-
-class CartUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminUser]
-    serializer_class = CartSerializer
-    pagination_class = PageNumberPagination
-    queryset = Cart.objects.filter()
-
-
 class CartItemCreateList(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
@@ -167,7 +77,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        cart = Cart.objects.filter(customer=self.request.user, status='O')
+        cart = Cart.objects.filter(customer=self.request.user, status='O').filter(status='P')
         return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
@@ -177,7 +87,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
         data = request.data
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        cart = Cart.objects.filter(status="O")
+        cart = Cart.objects.filter(status="O").filter(status='P')
         if not cart:
             # create a new Cart with the new data from response
             cart = Cart.objects.create(customer=self.request.user)
@@ -192,10 +102,14 @@ class CartItemCreateList(generics.ListCreateAPIView):
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'You are trying to add more than exists of this product'},
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
-        cart.total_price += decimal.Decimal(self.request.data["amount"]) * product.price
+        price = decimal.Decimal(self.request.data["amount"]) * product.price
+        cart.total_price += price
         cart.save()
+        if cart.status == 'P':
+            order = Order.pbjects.filter(product_list_id=cart.id)
+            order.update(total_price=cart.total_price)
         # perform_create method
-        serializer.save(cart=cart)
+        serializer.save(cart=cart, price=price)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -206,15 +120,37 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     pagination_class = PageNumberPagination
 
     def get_queryset(self):
-        return CartItem.objects.filter(cart__customer=self.request.user).filter(cart__status="O")
+        return CartItem.objects.filter(cart__customer=self.request.user, cart__status="O")
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        product = get_object_or_404(Product, pk=instance.product)
+        if product.amount_in_stock < self.request.data["amount"]:
+            headers = self.get_success_headers(serializer.data)
+            return Response({'Message': 'You are trying to add more than exists of this product'},
+                            status=status.HTTP_400_BAD_REQUEST, headers=headers)
+        cart = Cart.objects.filter(id=instance.product_list.id)
+        old_price = instance.price
+        instance.price = decimal.Decimal(self.request.data["amount"]) * product.price
+        instance.save()
+        total_price = cart[0].total_price - old_price + instance.price
+        cart.update(total_price=total_price)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        cart = Cart.objects.filter(status="O")
+        cart = Cart.objects.filter(status="O").filter(status="P")
+        self.perform_destroy(instance)
         cart_items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart=cart)
         if not cart_items:
             cart.delete()
-        self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -235,7 +171,7 @@ class OrderCreateList(generics.ListCreateAPIView):
             return Response({'Message': 'No cart found with status Open'},
                             status=status.HTTP_404_NOT_FOUND, headers=headers)
         cart = Cart.objects.filter(id=open_cart[0].id)
-        cart.update(status='C')
+        cart.update(status='P')
         tmp_status = 1
         flag = False
         payment_details = PaymentDetails.objects.filter(default=True)
@@ -326,6 +262,17 @@ class OrderChangeStatus(generics.UpdateAPIView):
     queryset = Order.objects.all()
 
 
+class OrderReceiving(generics.UpdateAPIView):
+    permission_classes = [IsOwnerOrAdminPermission]
+    serializer_class = OrderAdminSerializer
+
+    def get_queryset(self):
+        return Order.objects.filter(id=self.kwargs.get('pk'))
+
+    def perform_update(self, serializer):
+        serializer.save(order_status=7)
+
+
 class PaymentDetailsCreateList(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = PaymentDetailsSerializer
@@ -339,7 +286,7 @@ class PaymentDetailsCreateList(generics.ListCreateAPIView):
         default_value = False
         if not payment_details:
             default_value = True
-        elif payment_details[0].default and data["default"]:
+        elif payment_details[0].default and "default" in data and data["default"]:
             payment_details.update(default=False)
             default_value = True
         serializer = self.get_serializer(data=data)
@@ -380,7 +327,7 @@ class PaymentDetailsUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ShippingAddressCreateList(generics.ListCreateAPIView):
-    permission_classes = [IsAdminPermission]
+    permission_classes = [IsAuthenticated]
     serializer_class = ShippingAddressSerializer
 
     def get_queryset(self):
@@ -455,7 +402,7 @@ class FeedbackCreateList(generics.ListCreateAPIView):
                 return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
             else:
                 headers = self.get_success_headers(serializer.data)
-                return Response({'Message': 'You cannot leave a feedback for this product, first pyrchase it please'},
+                return Response({'Message': 'You cannot leave a feedback for this product, first purchase it please'},
                                 status=status.HTTP_400_BAD_REQUEST, headers=headers)
 
 
@@ -470,3 +417,47 @@ class FeedbackUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         self.check_object_permissions(self.request, obj)
 
         return obj
+
+
+class OrderPayment(generics.CreateAPIView):
+    permission_classes = [IsOwnerOrAdminPermission]
+
+    def get_serializer_class(self):
+        return OrderSerializer
+
+    def get_queryset(self):
+        return Order.objects.filter(id=self.kwargs.get('pk')).prefetch_related('product_list').prefetch_related(
+                        'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
+
+    def post(self, request, *args, **kwargs):
+        order = self.get_queryset()
+        products = Product.objects.all()
+        cart = get_object_or_404(Cart, pk=order[0].product_list)
+        cart_items = cart.prefetch_related(
+            Prefetch('cart_items',
+                     queryset=CartItem.objects.select_related('product'),
+                     to_attr='item'))
+        for item in cart_items:
+            product = products.filter(id=item.product_id)
+            if product.amount_in_stock < item.amount:
+                return Response({'Message': 'Amount in stock of this product has been changed \
+                - You are trying to take more than exists. Please update the amount and try checkout again.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if product.amount_in_stock == 0:
+                return Response({'Message': 'This product is out of stock'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            amount_in_stock = product.amount_in_stock-item.amount
+            product.update(amount_in_stock=amount_in_stock)
+        response = [
+            {
+                "Message": "Your payment has been processed successfully. Your order has been confirmed",
+                "Order_number": order[0].id,
+            },
+            {"Order information":
+                {
+                    serializers.serialize('json', order)
+                }
+            }
+        ]
+        order.update(order_status=1, paid=True)
+        return Response(response, status=status.HTTP_200_OK)
