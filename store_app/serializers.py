@@ -21,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
 
+     # TODO: Можно добавить валидацию username, что такого имени больше нет
     def create(self, validated_data):
         user = User.objects.create(
             username=validated_data.get('username'),
@@ -41,12 +42,15 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category', 'rate_count_dict']
 
+    # TODO: Могут быть проблемы с производительностью,
+    #  добавляем в prefetch или поле для подсчета среднего рейтинга в модель
     def get_rate_count_dict(self, obj):
         return Feedback.objects.filter(product_id=obj.id).values('rate').annotate(rate_count=Count('rate'))
 
 
 class CategorySerializer(serializers.ModelSerializer):
     name = serializers.CharField()
+    # TODO: Можно напрямую указать сериализатор, без SerializerMethodField
     products = serializers.SerializerMethodField()
 
     class Meta:

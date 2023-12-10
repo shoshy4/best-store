@@ -4,6 +4,7 @@ from .models import Product, Order, Category, Cart
 
 class ProductFilter(filters.FilterSet):
     name = filters.CharFilter(lookup_expr='icontains')
+    # TODO: по описанию лучше не надо, слишком затратно
     description = filters.CharFilter(lookup_expr='icontains')
     min_price = filters.NumberFilter(field_name="price", lookup_expr='gte')
     max_price = filters.NumberFilter(field_name="price", lookup_expr='lte')
@@ -34,6 +35,7 @@ class CategoryFilter(filters.FilterSet):
 class CartFilter(filters.FilterSet):
     STATUS_CHOICES = (
         ('0', "Open"),
+        #  TODO: Closed отличается от модели
         ('c', "Closed"),
     )
     status = filters.ChoiceFilter(choices=STATUS_CHOICES)

@@ -71,6 +71,7 @@ class ShippingAddress(models.Model):
 
 
 class Order(models.Model):
+    # TODO: Сложно будет работать со статусами 2, 3, 4
     ORDER_STATUS_CHOICES = (
         (1, "Paid. In process"),
         (2, "In process. Please add payment_details"),
@@ -104,7 +105,3 @@ class Feedback(models.Model):
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     rate = models.PositiveSmallIntegerField(choices=RATE_CHOICES, null=True)
     text = models.TextField(blank=True, null=True)
-
-
-
-

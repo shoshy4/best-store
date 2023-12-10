@@ -26,6 +26,7 @@ class CategoryCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = CategoryFilter
+    # TODO: Лучше добавить selected_related
     queryset = Category.objects.all()
 
 
@@ -56,6 +57,7 @@ class OrderList(generics.ListAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = OrderFilter
+    # TODO: customer лучше использовать select_related
     queryset = Order.objects.prefetch_related('product_list').prefetch_related('customer').prefetch_related(
         'shipping_address') \
         .prefetch_related('payment_details').all()
@@ -87,6 +89,9 @@ class CartItemCreateList(generics.ListCreateAPIView):
         data = request.data
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
+        # TODO: Тут не понятно, мы фильтруем по 2 статусам и выбираем первую попавшуюся? Нет фильтра по покупателю
+        #  Кажется надо оставить только со статусом O
+        #  + Можно сделать отдельным методом модели Cart
         cart = Cart.objects.filter(status="O").filter(status='P')
         if not cart:
             # create a new Cart with the new data from response
@@ -96,6 +101,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
         product = get_object_or_404(Product, pk=data["product"])
         if product.amount_in_stock == 0:
             headers = self.get_success_headers(serializer.data)
+            # TODO: Лучше использовать raise через exceptions ValidationError
+            #  относится ко всему коду
             return Response({'Message': 'This product is out of stock'},
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
         if product.amount_in_stock < data["amount"]:
@@ -105,7 +112,9 @@ class CartItemCreateList(generics.ListCreateAPIView):
         price = decimal.Decimal(self.request.data["amount"]) * product.price
         cart.total_price += price
         cart.save()
+        # TODO: Не уверен что мы должны добавлять в заказ
         if cart.status == 'P':
+            # TODO: Опечатка
             order = Order.pbjects.filter(product_list_id=cart.id)
             order.update(total_price=cart.total_price)
         # perform_create method
@@ -131,10 +140,12 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'You are trying to add more than exists of this product'},
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
+        # TODO: У нас же есть CartItem, если хочем получить Cart, то instance.cart
         cart = Cart.objects.filter(id=instance.product_list.id)
         old_price = instance.price
         instance.price = decimal.Decimal(self.request.data["amount"]) * product.price
         instance.save()
+        # TODO: Лучше пересчитать из БД, так шанс ошибиться будет меньше
         total_price = cart[0].total_price - old_price + instance.price
         cart.update(total_price=total_price)
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -146,6 +157,8 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        # TODO: Не уверен что из заказа должны удалять продукты.
+        #  Не пересчитываем итоговую стоимость
         cart = Cart.objects.filter(status="O").filter(status="P")
         self.perform_destroy(instance)
         cart_items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart=cart)
@@ -170,9 +183,12 @@ class OrderCreateList(generics.ListCreateAPIView):
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'No cart found with status Open'},
                             status=status.HTTP_404_NOT_FOUND, headers=headers)
+        # TODO: У нас уже есть корзина, нам не надо ещё один запрос делать
         cart = Cart.objects.filter(id=open_cart[0].id)
         cart.update(status='P')
+        # TODO: Везде где статусы O, P, 1 и т.д. лучше определить в моделях константы и использовать их
         tmp_status = 1
+        # TODO: Используем один статус для этого, убираем лишние статусы
         flag = False
         payment_details = PaymentDetails.objects.filter(default=True)
         shipping_address = ShippingAddress.objects.filter(default=True)
@@ -207,8 +223,10 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         return OrderSerializer
 
     def update(self, request, *args, **kwargs):
+        # TODO: С какой целью этот метод?
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        # TODO: Тяжело читать код, лучше распределять на отдельные функции и методы
         flag = False
         tmp_status = instance.order_status
         price = instance.total_price

@@ -3,6 +3,7 @@ from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingA
 
 admin.site.register(Category)
 admin.site.register(Product)
+# Для корзины добавить отображение продуктов.  Добавление inlines, StackedInline
 admin.site.register(Cart)
 admin.site.register(CartItem)
 admin.site.register(PaymentDetails)
