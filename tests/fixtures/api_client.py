@@ -12,3 +12,10 @@ def api_client_auth(user2):
     client = APIClient()
     client.force_authenticate(user=user2)
     return client, user2
+
+
+@pytest.fixture
+def api_client_auth(user3):
+    client = APIClient()
+    client.force_authenticate(user=user3)
+    return client, user3

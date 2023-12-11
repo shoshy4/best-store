@@ -3,7 +3,7 @@ import factory.fuzzy
 from store_app.models import *
 from .user import UserFactory
 
-STATUS_CODES = [x[0] for x in Cart.PRODUCT_TYPES]
+STATUS_CODES = [x[0] for x in Cart.STATUS_CHOICES]
 
 
 class CartFactory(factory.django.DjangoModelFactory):

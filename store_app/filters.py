@@ -16,11 +16,25 @@ class ProductFilter(filters.FilterSet):
 
 
 class OrderFilter(filters.FilterSet):
-    order_status = filters.CharFilter(lookup_expr='icontains')
+    IN_PROCESS = 1
+    NOT_COMPLETED = 2
+    PAID = 3
+    SENT = 4
+    DELIVERED = 5
+    RECEIVED = 6
+    ORDER_STATUS_CHOICES = (
+        (IN_PROCESS, "Completed. Payment in process"),
+        (NOT_COMPLETED, "Not completed yet. Make sure payment_details and shipping_address are added"),
+        (PAID, "Paid. In process"),
+        (SENT, "Sent to customer's shipping address"),
+        (DELIVERED, "Delivered"),
+        (RECEIVED, "Received")
+    )
+    order_status = filters.ChoiceFilter(choices=ORDER_STATUS_CHOICES)
 
     class Meta:
         model = Order
-        fields = ['customer', 'product_list', 'total_price', 'order_status', 'paid']
+        fields = ['customer', 'product_list', 'order_status', 'paid']
 
 
 class CategoryFilter(filters.FilterSet):
@@ -39,9 +53,9 @@ class CartFilter(filters.FilterSet):
         ('C', "Closed"),
     )
     status = filters.ChoiceFilter(choices=STATUS_CHOICES)
-    total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
+    # total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
     customer = filters.CharFilter(lookup_expr='icontains', field_name="customer__username")
 
     class Meta:
         model = Cart
-        fields = ['status', 'total_price', 'customer']
+        fields = ['status', 'customer']
