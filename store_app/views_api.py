@@ -1,17 +1,13 @@
-import decimal
-import json
-
 from django.contrib.auth.models import User
 from django.core import serializers
-from django.db.models import Prefetch, Count, Q
-from django.http import JsonResponse
+from django.db.models import Prefetch, Q, Avg, Sum
 from django_filters import rest_framework as filters
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from .filters import ProductFilter, OrderFilter, CategoryFilter, CartFilter
+from .filters import ProductFilter, OrderFilter, CategoryFilter
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
 from .permissions import IsAdminPermission, IsOwnerOrAdminPermission
 from .serializers import CategorySerializer, ProductSerializer, CartSerializer, CartItemSerializer, \
@@ -26,15 +22,14 @@ class CategoryCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = CategoryFilter
-    # TODO: Лучше добавить selected_related - Q
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().prefetch_related('product')
 
 
 class CategoryUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminPermission]
     serializer_class = CategorySerializer
     pagination_class = PageNumberPagination
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().prefetch_related('product')
 
 
 class SignUp(generics.CreateAPIView):
@@ -48,7 +43,7 @@ class ProductCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = ProductFilter
-    queryset = Product.objects.prefetch_related('category').all()
+    queryset = Product.objects.prefetch_related('category').prefetch_related('feedback').aggregate(Avg('rate'))
 
 
 class OrderList(generics.ListAPIView):
@@ -57,7 +52,6 @@ class OrderList(generics.ListAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = OrderFilter
-    # TODO: customer лучше использовать select_related - DONE
     queryset = Order.objects.prefetch_related('product_list').select_related('customer').prefetch_related(
         'shipping_address') \
         .prefetch_related('payment_details').all()
@@ -66,7 +60,7 @@ class OrderList(generics.ListAPIView):
 class ProductUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminPermission]
     serializer_class = ProductSerializer
-    queryset = Product.objects.prefetch_related('category').all()
+    queryset = Product.objects.prefetch_related('category').prefetch_related('feedback').aggregate(Avg('rate'))
 
 
 class CartItemCreateList(generics.ListCreateAPIView):
@@ -79,7 +73,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status='O') | Q(status='P'))
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.STATUS_CHOICES.OPEN) |
+                                                                      Q(status=Cart.STATUS_CHOICES.PROCESSED))
         return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
@@ -87,17 +82,19 @@ class CartItemCreateList(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         data = request.data
+        product = Product.objects.filter(product=data["product"])
+        data["price"] = data["amount"]*product.price
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        # TODO: Тут не понятно, мы фильтруем по 2 статусам и выбираем первую попавшуюся? Нет фильтра по покупателю
-        #  Кажется надо оставить только со статусом O - DONE
-        #  + Можно сделать отдельным методом модели Cart
-        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status='O') | Q(status='P'))
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.STATUS_CHOICES.OPEN) |
+                                                                      Q(status=Cart.STATUS_CHOICES.PROCESSED))
         if not cart:
             # create a new Cart with the new data from response
             cart = Cart.objects.create(customer=self.request.user)
         else:
             cart = cart[0]
+        cart.total_price += data["price"]
+        cart.save()
         # perform_create method
         serializer.save(cart=cart)
         headers = self.get_success_headers(serializer.data)
@@ -115,8 +112,9 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        # TODO: Лучше пересчитать из БД, так шанс ошибиться будет меньше - Q
-        instance.cart.total_price()
+        if "amount" in request.data:
+            instance.cart.total_price -= instance.price
+            instance.cart.total_price += request.data["amount"]*instance.product.price
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -126,14 +124,11 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        # TODO: Не уверен что из заказа должны удалять продукты. - Q
-        #  Не пересчитываем итоговую стоимость - DONE
         cart = instance.cart
-        cart_items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart=cart)
+        cart.total_price -= instance.price
+        cart.save()
         self.perform_destroy(instance)
-        cart.total_price()
-        if not cart_items:
-            cart.delete()
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -148,16 +143,15 @@ class OrderCreateList(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        open_cart = Cart.objects.filter(customer=self.request.user, status='O')
+        open_cart = Cart.objects.filter(customer=self.request.user, status=Cart.STATUS_CHOICES.OPEN)
         if not open_cart:
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'No cart found with status Open'},
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
-        # TODO: У нас уже есть корзина, нам не надо ещё один запрос делать - Q
-        cart = Cart.objects.filter(id=open_cart[0].id)
-        cart.update(status='P')
+        cart = open_cart[0]
+        cart.status = Cart.STATUS_CHOICES.PROCESSED
         tmp_status, payment_details, shipping_address = Order.calculate_status_for_new_order()
-        serializer.save(product_list=cart[0], customer=self.request.user,
+        serializer.save(product_list=cart, customer=self.request.user,
                         order_status=tmp_status, payment_details=payment_details,
                         shipping_address=shipping_address)
         headers = self.get_success_headers(serializer.data)
@@ -186,13 +180,12 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def total_price_calculation(self):
         if (self.request.data.get("product_list")) is not None and not (self.request.data.get("product_list") == ""):
             cart = get_object_or_404(Cart, self.request.data.get("product_list"))
-            cart.total_price()
+            cart.total_price = CartItem.objects.filter(cart=cart).aggregate(Sum('price'))
+            cart.save()
 
     def update(self, request, *args, **kwargs):
-        # TODO: С какой целью этот метод? - Q
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        # TODO: Тяжело читать код, лучше распределять на отдельные функции и методы - DONE
         tmp_status = self.calculate_new_status(instance)
         self.total_price_calculation()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)

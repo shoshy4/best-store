@@ -6,9 +6,9 @@ import pytest
 def test_sign_up(api_client_unauth):
     url = reverse('sign_up')
     client, _ = api_client_unauth
-    payload = {"username": "dina",
-               "password": "dina12345!",
-               "confirm_password": "dina12345!"
+    payload = {"username": "me",
+               "password": "me12345!",
+               "confirm_password": "me12345!"
                }
     response = client.post(url, payload, format='json')
     assert response.status_code == 201

@@ -15,6 +15,6 @@ def user2():
 
 
 @pytest.fixture
-def user3():
-    user = UserFactory()
+def admin():
+    user = UserFactory(is_staff=True, is_superuser=True)
     return user

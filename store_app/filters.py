@@ -4,7 +4,6 @@ from .models import Product, Order, Category, Cart
 
 class ProductFilter(filters.FilterSet):
     name = filters.CharFilter(lookup_expr='icontains')
-    # TODO: по описанию лучше не надо, слишком затратно - DONE
     min_price = filters.NumberFilter(field_name="price", lookup_expr='gte')
     max_price = filters.NumberFilter(field_name="price", lookup_expr='lte')
     price = filters.NumberFilter(field_name="price", lookup_expr='exact')
@@ -34,7 +33,7 @@ class OrderFilter(filters.FilterSet):
 
     class Meta:
         model = Order
-        fields = ['customer', 'product_list', 'order_status', 'paid']
+        fields = ['customer', 'product_list', 'order_status', 'paid', 'total_price']
 
 
 class CategoryFilter(filters.FilterSet):
@@ -46,16 +45,18 @@ class CategoryFilter(filters.FilterSet):
 
 
 class CartFilter(filters.FilterSet):
+    OPEN = "O"
+    PROCESSED = "P"
+    CLOSED = "C"
     STATUS_CHOICES = (
-        ('0', "Open"),
-        ('P', 'Being processed'),
-        #  TODO: Closed отличается от модели - DONE
-        ('C', "Closed"),
+        (OPEN, "Open"),
+        (PROCESSED, 'Being processed'),
+        (CLOSED, "Closed"),
     )
     status = filters.ChoiceFilter(choices=STATUS_CHOICES)
-    # total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
+    total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
     customer = filters.CharFilter(lookup_expr='icontains', field_name="customer__username")
 
     class Meta:
         model = Cart
-        fields = ['status', 'customer']
+        fields = ['status', 'customer', 'total_price']

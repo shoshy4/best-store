@@ -1,7 +1,7 @@
 from django.contrib import auth
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Sum
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -27,10 +27,7 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=7, decimal_places=2)
     amount_in_stock = models.IntegerField(validators=[validate_above_zero])
     image = models.ImageField(upload_to='images/', blank=True, null=True)
-    category = models.ManyToManyField(Category)
-
-    def rate_count(self):
-        return Feedback.objects.filter(product=self).values('product').annotate(rate_count=Count('rate'))
+    category = models.ManyToManyField(Category, related_name='product')
 
     def __str__(self):
         return f"{self.name}: ${self.price}"
@@ -47,26 +44,24 @@ class Cart(models.Model):
     )
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     status = models.CharField(choices=STATUS_CHOICES, default='O', max_length=1)
-    # total_price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
+    total_price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
 
-    def total_price(self):
-        return sum([
-            cart_item.total()
-            for cart_item in CartItem.objects.filter(cart=self)
-        ])
+    def calculate_total_price(self):
+        return CartItem.objects.filter(cart=self).aggregate(Sum('price'))
 
     def __str__(self):
-        return f"{self.customer.name}, ${self.total_price()}: {self.status}"
+        return f"{self.customer.name}, ${self.total_price}: {self.status}"
 
 
 class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     amount = models.IntegerField()
-    # price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     cart = models.ForeignKey(Cart, related_name="cart_items", on_delete=models.CASCADE)
 
+    @property
     def total(self):
-        return self.count * self.product.price
+        return self.amount*self.product.price
 
     def __str__(self):
         return f"{self.product.name}, " \
@@ -91,7 +86,6 @@ class ShippingAddress(models.Model):
 
 
 class Order(models.Model):
-    # TODO: Сложно будет работать со статусами 2, 3, 4
     IN_PROCESS = 1
     NOT_COMPLETED = 2
     PAID = 3
@@ -109,16 +103,13 @@ class Order(models.Model):
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     product_list = models.OneToOneField(Cart, related_name="cart", on_delete=models.CASCADE)
-    # total_price = models.DecimalField(max_digits=7, decimal_places=2)
+    total_price = models.DecimalField(max_digits=7, decimal_places=2)
     shipping_address = models.ForeignKey(ShippingAddress, related_name='shipping_address', on_delete=models.CASCADE,
                                          blank=True, null=True)
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
     order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=1)
     paid = models.BooleanField(default=False)
     created_date = models.DateTimeField(default=timezone.now)
-
-    def total_price(self):
-        return self.product_list.total_price()
 
     def calculate_status_for_new_order(self):
         tmp_status = Order.IN_PROCESS
@@ -141,7 +132,7 @@ class Feedback(models.Model):
         (2, "not bad"),
         (1, "bad"),
     )
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='feedback')
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     rate = models.PositiveSmallIntegerField(choices=RATE_CHOICES, null=True)
     text = models.TextField(blank=True, null=True)

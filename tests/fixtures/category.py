@@ -9,7 +9,13 @@ def category_unauth():
 
 
 @pytest.fixture
-def category(user2):
+def category_user(user2):
+    category = CategoryFactory()
+    return category
+
+
+@pytest.fixture
+def category(admin):
     category = CategoryFactory()
     return category
 

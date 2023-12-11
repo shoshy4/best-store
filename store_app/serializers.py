@@ -1,7 +1,6 @@
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from django.db.models import Count
 from rest_framework.generics import get_object_or_404
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingAddress, Order, Feedback
@@ -20,9 +19,10 @@ class UserSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
+        if User.objects.filter(username=attrs['username']).exists():
+            raise serializers.ValidationError({"username": "Username %s already exists." % attrs['username']})
         return attrs
 
-     # TODO: Можно добавить валидацию username, что такого имени больше нет - Q
     def create(self, validated_data):
         user = User.objects.create(
             username=validated_data.get('username'),
@@ -30,28 +30,21 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
         user.set_password(validated_data['password'])
-        validated_data.pop('confirm_password')  # added
+        validated_data.pop('confirm_password')
         user.save()
         return user
 
 
 class ProductSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, use_url=True)
-    # rate_count_dict = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
-        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category', 'rate_count']
-
-    # TODO: Могут быть проблемы с производительностью,
-    #  добавляем в prefetch или поле для подсчета среднего рейтинга в модель -DONE
-    # def get_rate_count_dict(self, obj):
-    #     return Feedback.objects.filter(product_id=obj.id).values('rate').annotate(rate_count=Count('rate'))
+        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category']
 
 
 class CategorySerializer(serializers.ModelSerializer):
     name = serializers.CharField()
-    # TODO: Можно напрямую указать сериализатор, без SerializerMethodField - DONE
     products = ProductSerializer()
 
     class Meta:
@@ -65,7 +58,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    # price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
+    price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
 
     def validate(self, data):
         product = get_object_or_404(Product, pk=data["product"])
@@ -77,13 +70,14 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CartItem
-        fields = ['amount', 'product', 'total']
+        fields = ['amount', 'product', 'price']
 
 
 class CartSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     cart_items = CartItemSerializer(many=True)
     status = serializers.CharField(source='get_status_display', read_only=True)
+    total_price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True, source='cart.total_price')
 
     class Meta:
         model = Cart
