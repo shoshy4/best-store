@@ -3,7 +3,7 @@ import json
 
 from django.contrib.auth.models import User
 from django.core import serializers
-from django.db.models import Prefetch, Count
+from django.db.models import Prefetch, Count, Q
 from django.http import JsonResponse
 from django_filters import rest_framework as filters
 from rest_framework.generics import get_object_or_404
@@ -26,7 +26,7 @@ class CategoryCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = CategoryFilter
-    # TODO: Лучше добавить selected_related
+    # TODO: Лучше добавить selected_related - Q
     queryset = Category.objects.all()
 
 
@@ -57,8 +57,8 @@ class OrderList(generics.ListAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = OrderFilter
-    # TODO: customer лучше использовать select_related
-    queryset = Order.objects.prefetch_related('product_list').prefetch_related('customer').prefetch_related(
+    # TODO: customer лучше использовать select_related - DONE
+    queryset = Order.objects.prefetch_related('product_list').select_related('customer').prefetch_related(
         'shipping_address') \
         .prefetch_related('payment_details').all()
 
@@ -79,7 +79,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        cart = Cart.objects.filter(customer=self.request.user, status='O').filter(status='P')
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status='O') | Q(status='P'))
         return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
@@ -90,35 +90,16 @@ class CartItemCreateList(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         # TODO: Тут не понятно, мы фильтруем по 2 статусам и выбираем первую попавшуюся? Нет фильтра по покупателю
-        #  Кажется надо оставить только со статусом O
+        #  Кажется надо оставить только со статусом O - DONE
         #  + Можно сделать отдельным методом модели Cart
-        cart = Cart.objects.filter(status="O").filter(status='P')
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status='O') | Q(status='P'))
         if not cart:
             # create a new Cart with the new data from response
             cart = Cart.objects.create(customer=self.request.user)
         else:
             cart = cart[0]
-        product = get_object_or_404(Product, pk=data["product"])
-        if product.amount_in_stock == 0:
-            headers = self.get_success_headers(serializer.data)
-            # TODO: Лучше использовать raise через exceptions ValidationError
-            #  относится ко всему коду
-            return Response({'Message': 'This product is out of stock'},
-                            status=status.HTTP_400_BAD_REQUEST, headers=headers)
-        if product.amount_in_stock < data["amount"]:
-            headers = self.get_success_headers(serializer.data)
-            return Response({'Message': 'You are trying to add more than exists of this product'},
-                            status=status.HTTP_400_BAD_REQUEST, headers=headers)
-        price = decimal.Decimal(self.request.data["amount"]) * product.price
-        cart.total_price += price
-        cart.save()
-        # TODO: Не уверен что мы должны добавлять в заказ
-        if cart.status == 'P':
-            # TODO: Опечатка
-            order = Order.pbjects.filter(product_list_id=cart.id)
-            order.update(total_price=cart.total_price)
         # perform_create method
-        serializer.save(cart=cart, price=price)
+        serializer.save(cart=cart)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -134,20 +115,8 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        product = get_object_or_404(Product, pk=instance.product)
-        if product.amount_in_stock < self.request.data["amount"]:
-            headers = self.get_success_headers(serializer.data)
-            return Response({'Message': 'You are trying to add more than exists of this product'},
-                            status=status.HTTP_400_BAD_REQUEST, headers=headers)
-        # TODO: У нас же есть CartItem, если хочем получить Cart, то instance.cart
-        cart = Cart.objects.filter(id=instance.product_list.id)
-        old_price = instance.price
-        instance.price = decimal.Decimal(self.request.data["amount"]) * product.price
-        instance.save()
-        # TODO: Лучше пересчитать из БД, так шанс ошибиться будет меньше
-        total_price = cart[0].total_price - old_price + instance.price
-        cart.update(total_price=total_price)
+        # TODO: Лучше пересчитать из БД, так шанс ошибиться будет меньше - Q
+        instance.cart.total_price()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -157,11 +126,12 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        # TODO: Не уверен что из заказа должны удалять продукты.
-        #  Не пересчитываем итоговую стоимость
-        cart = Cart.objects.filter(status="O").filter(status="P")
-        self.perform_destroy(instance)
+        # TODO: Не уверен что из заказа должны удалять продукты. - Q
+        #  Не пересчитываем итоговую стоимость - DONE
+        cart = instance.cart
         cart_items = CartItem.objects.filter(cart__customer=self.request.user).filter(cart=cart)
+        self.perform_destroy(instance)
+        cart.total_price()
         if not cart_items:
             cart.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -178,36 +148,16 @@ class OrderCreateList(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        open_cart = Cart.objects.filter(status='O')
+        open_cart = Cart.objects.filter(customer=self.request.user, status='O')
         if not open_cart:
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'No cart found with status Open'},
-                            status=status.HTTP_404_NOT_FOUND, headers=headers)
-        # TODO: У нас уже есть корзина, нам не надо ещё один запрос делать
+                            status=status.HTTP_400_BAD_REQUEST, headers=headers)
+        # TODO: У нас уже есть корзина, нам не надо ещё один запрос делать - Q
         cart = Cart.objects.filter(id=open_cart[0].id)
         cart.update(status='P')
-        # TODO: Везде где статусы O, P, 1 и т.д. лучше определить в моделях константы и использовать их
-        tmp_status = 1
-        # TODO: Используем один статус для этого, убираем лишние статусы
-        flag = False
-        payment_details = PaymentDetails.objects.filter(default=True)
-        shipping_address = ShippingAddress.objects.filter(default=True)
-        if not shipping_address:
-            tmp_status = 3
-            flag = True
-            shipping_address = None
-        else:
-            shipping_address = shipping_address[0]
-        if not payment_details:
-            payment_details = None
-            if flag:
-                tmp_status = 4
-            else:
-                tmp_status = 2
-        else:
-            payment_details = payment_details[0]
-        total_price = cart[0].total_price
-        serializer.save(product_list=cart[0], customer=self.request.user, total_price=total_price,
+        tmp_status, payment_details, shipping_address = Order.calculate_status_for_new_order()
+        serializer.save(product_list=cart[0], customer=self.request.user,
                         order_status=tmp_status, payment_details=payment_details,
                         shipping_address=shipping_address)
         headers = self.get_success_headers(serializer.data)
@@ -222,50 +172,32 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
             return OrderAdminSerializer
         return OrderSerializer
 
-    def update(self, request, *args, **kwargs):
-        # TODO: С какой целью этот метод?
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        # TODO: Тяжело читать код, лучше распределять на отдельные функции и методы
-        flag = False
+    def calculate_new_status(self, instance):
         tmp_status = instance.order_status
-        price = instance.total_price
         # if shipping address is being added
-        if (instance.order_status == 3 or instance.order_status == 4) \
-                and ((self.request.data.get("shipping_address") is not None)
-                     and not self.request.data.get("shipping_address") == ""):
-            if instance.order_status == 4:
-                tmp_status = 2
-                flag = True
-            else:
-                tmp_status = 1
-        # if payment_details is being added
-        if (instance.order_status == 2 or instance.order_status == 4) \
-                and ((self.request.data.get("payment_details")
-                      is not None) and not self.request.data.get("payment_details") == ""):
-            if flag:
-                tmp_status = 1
-            else:
-                tmp_status = 3
-        # if nor shipping_address nor payment_details are not being added
-        if (instance.order_status == 4) and (self.request.data.get("payment_details") is None
-                                             or (self.request.data.get("payment_details") == "")
-                                             and (self.request.data.get("shipping_address") is None
-                                                  or (self.request.data.get("shipping_address") == ""))):
-            tmp_status = 5
-        # update total_price of updated product_list (cart)
+        if instance.order_status == Order.NOT_COMPLETED:
+            if ((self.request.data.get("shipping_address") is not None
+                 and not self.request.data.get("shipping_address") == "") or instance.shipping_address) \
+                    and ((self.request.data.get("payment_details") is not None
+                          and not self.request.data.get("payment_details") == "") or instance.payment_details):
+                tmp_status = Order.IN_PROCESS
+        return tmp_status
+
+    def total_price_calculation(self):
         if (self.request.data.get("product_list")) is not None and not (self.request.data.get("product_list") == ""):
             cart = get_object_or_404(Cart, self.request.data.get("product_list"))
-            price = cart.total_price
+            cart.total_price()
+
+    def update(self, request, *args, **kwargs):
+        # TODO: С какой целью этот метод? - Q
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        # TODO: Тяжело читать код, лучше распределять на отдельные функции и методы - DONE
+        tmp_status = self.calculate_new_status(instance)
+        self.total_price_calculation()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        # update product_list's (cart) total_price when total_price is being updated
-        if self.request.user.is_staff:
-            if (self.request.data.get("total_price")) is not None and not (self.request.data.get("total_price") == ""):
-                cart = Cart.objects.filter(id=instance.product_list.id)
-                price = self.request.data.get("total_price")
-                cart.update(total_price=price)
         serializer.is_valid(raise_exception=True)
-        serializer.save(order_status=tmp_status, total_price=price)
+        serializer.save(order_status=tmp_status)
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
         return Response(serializer.data)
@@ -287,8 +219,15 @@ class OrderReceiving(generics.UpdateAPIView):
     def get_queryset(self):
         return Order.objects.filter(id=self.kwargs.get('pk'))
 
-    def perform_update(self, serializer):
-        serializer.save(order_status=7)
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = {"order_status": Order.RECEIVED}
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        return Response(serializer.data)
 
 
 class PaymentDetailsCreateList(generics.ListCreateAPIView):
@@ -298,8 +237,7 @@ class PaymentDetailsCreateList(generics.ListCreateAPIView):
     def get_queryset(self):
         return PaymentDetails.objects.filter(customer=self.request.user)
 
-    def create(self, request, *args, **kwargs):
-        data = request.data
+    def calculate_default(self, data):
         payment_details = PaymentDetails.objects.filter(default=True, customer=self.request.user)
         default_value = False
         if not payment_details:
@@ -307,6 +245,11 @@ class PaymentDetailsCreateList(generics.ListCreateAPIView):
         elif payment_details[0].default and "default" in data and data["default"]:
             payment_details.update(default=False)
             default_value = True
+        return default_value
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        default_value = self.calculate_default(data)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         serializer.save(customer=self.request.user, default=default_value)
@@ -321,17 +264,20 @@ class PaymentDetailsUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return PaymentDetails.objects.filter(customer=self.request.user)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        data = request.data
+    def update_default(self, data):
         if "default" in data:
             default_value = data["default"]
             if default_value:
                 PaymentDetails.objects.all(customer=self.request.user).update(default=False)
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data
+        self.update_default(data)
+        serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        self.perform_update(serializer)
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
         return Response(serializer.data)
@@ -351,8 +297,7 @@ class ShippingAddressCreateList(generics.ListCreateAPIView):
     def get_queryset(self):
         return ShippingAddress.objects.filter(customer=self.request.user)
 
-    def create(self, request, *args, **kwargs):
-        data = request.data
+    def calculate_default(self, data):
         shipping_address = ShippingAddress.objects.filter(default=True, customer=self.request.user)
         default_value = False
         if not shipping_address:
@@ -360,6 +305,11 @@ class ShippingAddressCreateList(generics.ListCreateAPIView):
         elif shipping_address[0].default and data["default"]:
             shipping_address.update(default=False)
             default_value = True
+        return default_value
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        default_value = self.calculate_default(data)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         serializer.save(customer=self.request.user, default=default_value)
@@ -374,14 +324,17 @@ class ShippingAddressUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return ShippingAddress.objects.filter(customer=self.request.user)
 
+    def update_default(self, data):
+        if "default" in data:
+            default_value = data["default"]
+            if default_value:
+                PaymentDetails.objects.all(customer=self.request.user).update(default=False)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         data = request.data
-        if "default" in data:
-            default_value = data["default"]
-            if default_value:
-                ShippingAddress.objects.all(customer=self.request.user).update(default=False)
+        self.update_default(data)
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -408,20 +361,22 @@ class FeedbackCreateList(generics.ListCreateAPIView):
         product = get_object_or_404(Product, pk=self.kwargs.get('pk'))
         serializer.save(customer=self.request.user, product=product)
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+    def check_if_paid_for_product(self, serializer, data):
         paid_orders = Order.objects.filter(customer=self.request.user, paid=True)
         for order in paid_orders:
             cart = get_object_or_404(Cart, pk=order.product_list_id)
-            if cart.cart_item_set.all().filter(id=request.data.get(id)).exists():
+            if cart.cart_item_set.all().filter(id=data.get(id)).exists():
                 self.perform_create(serializer)
                 headers = self.get_success_headers(serializer.data)
                 return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-            else:
-                headers = self.get_success_headers(serializer.data)
-                return Response({'Message': 'You cannot leave a feedback for this product, first purchase it please'},
-                                status=status.HTTP_400_BAD_REQUEST, headers=headers)
+        headers = self.get_success_headers(serializer.data)
+        return Response({'Message': 'You cannot leave a feedback for this product, first purchase it please'},
+                        status=status.HTTP_400_BAD_REQUEST, headers=headers)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self.check_if_paid_for_product(serializer, data=request.data)
 
 
 class FeedbackUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
@@ -433,7 +388,6 @@ class FeedbackUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         queryset = self.get_queryset()
         obj = get_object_or_404(queryset, pk=self.kwargs.get('feedback_pk'))
         self.check_object_permissions(self.request, obj)
-
         return obj
 
 
@@ -445,27 +399,23 @@ class OrderPayment(generics.CreateAPIView):
 
     def get_queryset(self):
         return Order.objects.filter(id=self.kwargs.get('pk')).prefetch_related('product_list').prefetch_related(
-                        'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
+            'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
 
-    def post(self, request, *args, **kwargs):
-        order = self.get_queryset()
-        products = Product.objects.all()
+    def calculate_amount_in_stock(self, order):
         cart = get_object_or_404(Cart, pk=order[0].product_list)
         cart_items = cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
                      to_attr='item'))
         for item in cart_items:
-            product = products.filter(id=item.product_id)
-            if product.amount_in_stock < item.amount:
-                return Response({'Message': 'Amount in stock of this product has been changed \
-                - You are trying to take more than exists. Please update the amount and try checkout again.'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            if product.amount_in_stock == 0:
-                return Response({'Message': 'This product is out of stock'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            amount_in_stock = product.amount_in_stock-item.amount
-            product.update(amount_in_stock=amount_in_stock)
+            cart_item_serializer = self.get_serializer(data={"amount": item.amount, "product": item.product_id})
+            cart_item_serializer.is_valid(raise_exception=True)
+            amount_in_stock = item.product.amount_in_stock - item.amount
+            item.product.update(amount_in_stock=amount_in_stock)
+
+    def post(self, request, *args, **kwargs):
+        order = self.get_queryset()
+        self.calculate_amount_in_stock(order)
         response = [
             {
                 "Message": "Your payment has been processed successfully. Your order has been confirmed",
@@ -477,5 +427,5 @@ class OrderPayment(generics.CreateAPIView):
                 }
             }
         ]
-        order.update(order_status=1, paid=True)
+        order.update(order_status=Order.PAID, paid=True)
         return Response(response, status=status.HTTP_200_OK)

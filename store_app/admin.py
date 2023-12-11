@@ -3,8 +3,20 @@ from .models import Category, Product, Cart, CartItem, PaymentDetails, ShippingA
 
 admin.site.register(Category)
 admin.site.register(Product)
-# Для корзины добавить отображение продуктов.  Добавление inlines, StackedInline
-admin.site.register(Cart)
+# Для корзины добавить отображение продуктов.  Добавление inlines, StackedInline - DONE
+
+
+class ItemInline(admin.StackedInline):
+    model = CartItem
+    extra = 5
+
+
+class CartAdmin(admin.ModelAdmin):
+    inlines = [ItemInline]
+    list_display = ["customer", "total_price", "status"]
+
+
+admin.site.register(Cart, CartAdmin)
 admin.site.register(CartItem)
 admin.site.register(PaymentDetails)
 admin.site.register(ShippingAddress)

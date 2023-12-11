@@ -4,8 +4,7 @@ from .models import Product, Order, Category, Cart
 
 class ProductFilter(filters.FilterSet):
     name = filters.CharFilter(lookup_expr='icontains')
-    # TODO: по описанию лучше не надо, слишком затратно
-    description = filters.CharFilter(lookup_expr='icontains')
+    # TODO: по описанию лучше не надо, слишком затратно - DONE
     min_price = filters.NumberFilter(field_name="price", lookup_expr='gte')
     max_price = filters.NumberFilter(field_name="price", lookup_expr='lte')
     price = filters.NumberFilter(field_name="price", lookup_expr='exact')
@@ -13,7 +12,7 @@ class ProductFilter(filters.FilterSet):
 
     class Meta:
         model = Product
-        fields = ['name', 'description', 'price', 'category']
+        fields = ['name', 'price', 'category']
 
 
 class OrderFilter(filters.FilterSet):
@@ -35,8 +34,9 @@ class CategoryFilter(filters.FilterSet):
 class CartFilter(filters.FilterSet):
     STATUS_CHOICES = (
         ('0', "Open"),
-        #  TODO: Closed отличается от модели
-        ('c', "Closed"),
+        ('P', 'Being processed'),
+        #  TODO: Closed отличается от модели - DONE
+        ('C', "Closed"),
     )
     status = filters.ChoiceFilter(choices=STATUS_CHOICES)
     total_price = filters.NumberFilter(field_name="total_price", lookup_expr='exact')
