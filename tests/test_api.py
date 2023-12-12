@@ -1,8 +1,20 @@
 from django.urls import reverse
 import pytest
 
-from store_app.models import Order
-
+IN_PROCESS = 1
+NOT_COMPLETED = 2
+PAID = 3
+SENT = 4
+DELIVERED = 5
+RECEIVED = 6
+ORDER_STATUS_CHOICES = (
+    (IN_PROCESS, "Completed. Payment in process"),
+    (NOT_COMPLETED, "Not completed yet. Make sure payment_details and shipping_address are added"),
+    (PAID, "Paid. In process"),
+    (SENT, "Sent to customer's shipping address"),
+    (DELIVERED, "Delivered"),
+    (RECEIVED, "Received")
+)
 
 @pytest.mark.django_db
 def test_sign_up(api_client_unauth):
@@ -341,7 +353,7 @@ def test_order_delete(api_client_auth, order):
 def test_order_change_status(api_client_admin, order):
     url = reverse('order_update_detail_remove_api', kwargs={'pk': order.id})
     client, _ = api_client_admin
-    payload = {"orders_status": Order.ORDER_STATUS_CHOICES.IN_PROCESS}
+    payload = {"orders_status": ORDER_STATUS_CHOICES.IN_PROCESS}
     response = client.patch(url, payload, format='json')
     assert response.status_code == 200
     assert "orders_status" in response.data

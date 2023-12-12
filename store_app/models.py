@@ -1,7 +1,6 @@
-from django.contrib import auth
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Sum
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
