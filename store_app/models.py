@@ -26,7 +26,7 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=7, decimal_places=2)
     amount_in_stock = models.IntegerField(validators=[validate_above_zero])
     image = models.ImageField(upload_to='images/', blank=True, null=True)
-    category = models.ManyToManyField(Category, related_name='product')
+    category = models.ManyToManyField(Category, related_name='product', blank=True, null=True)
 
     def __str__(self):
         return f"{self.name}: ${self.price}"
@@ -48,9 +48,6 @@ class Cart(models.Model):
     def calculate_total_price(self):
         return CartItem.objects.filter(cart=self).aggregate(Sum('price'))
 
-    def __str__(self):
-        return f"{self.customer.name}, ${self.total_price}: {self.status}"
-
 
 class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
@@ -61,10 +58,6 @@ class CartItem(models.Model):
     @property
     def total(self):
         return self.amount*self.product.price
-
-    def __str__(self):
-        return f"{self.product.name}, " \
-               f"${self.product.price} * {self.amount} = ${self.total()}"
 
 
 class PaymentDetails(models.Model):
@@ -106,7 +99,7 @@ class Order(models.Model):
     shipping_address = models.ForeignKey(ShippingAddress, related_name='shipping_address', on_delete=models.CASCADE,
                                          blank=True, null=True)
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
-    order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=IN_PROCESS)
+    order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=NOT_COMPLETED)
     paid = models.BooleanField(default=False)
     created_date = models.DateTimeField(default=timezone.now)
 

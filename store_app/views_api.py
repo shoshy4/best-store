@@ -43,12 +43,12 @@ class ProductCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = ProductFilter
-    queryset = Product.objects.prefetch_related('category')\
+    queryset = Product.objects.prefetch_related('category') \
         # .prefetch_related(
-        # Prefetch('feedback',
-        #          queryset=Feedback.objects.aggregate(
-        #              Avg('feedback__rate'),
-        #              to_attr='name')))
+    # Prefetch('feedback',
+    #          queryset=Feedback.objects.aggregate(
+    #              Avg('feedback__rate'),
+    #              to_attr='name')))
 
 
 class OrderList(generics.ListAPIView):
@@ -65,12 +65,12 @@ class OrderList(generics.ListAPIView):
 class ProductUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminPermission]
     serializer_class = ProductSerializer
-    queryset = Product.objects.prefetch_related('category')\
+    queryset = Product.objects.prefetch_related('category') \
         # .prefetch_related(
-        # Prefetch('feedback',
-        #          queryset=Feedback.objects.aggregate(
-        #              Avg('feedback__rate'),
-        #              to_attr='name')))
+    # Prefetch('feedback',
+    #          queryset=Feedback.objects.aggregate(
+    #              Avg('feedback__rate'),
+    #              to_attr='name')))
 
 
 class CartItemCreateList(generics.ListCreateAPIView):
@@ -83,8 +83,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.STATUS_CHOICES.OPEN) |
-                                                                      Q(status=Cart.STATUS_CHOICES.PROCESSED))
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.OPEN) |
+                                                                      Q(status=Cart.PROCESSED))
         return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
@@ -92,12 +92,12 @@ class CartItemCreateList(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        product = Product.objects.filter(product=data["product"])
+        product = get_object_or_404(Product, pk=data["product"])
         data["price"] = data["amount"] * product.price
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.STATUS_CHOICES.OPEN) |
-                                                                      Q(status=Cart.STATUS_CHOICES.PROCESSED))
+        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.OPEN) |
+                                                                      Q(status=Cart.PROCESSED))
         if not cart:
             # create a new Cart with the new data from response
             cart = Cart.objects.create(customer=self.request.user)
@@ -106,7 +106,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
         cart.total_price += data["price"]
         cart.save()
         # perform_create method
-        serializer.save(cart=cart)
+        serializer.save(cart=cart, price=data["price"])
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -153,13 +153,13 @@ class OrderCreateList(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        open_cart = Cart.objects.filter(customer=self.request.user, status=Cart.STATUS_CHOICES.OPEN)
+        open_cart = Cart.objects.filter(customer=self.request.user, status=Cart.OPEN)
         if not open_cart:
             headers = self.get_success_headers(serializer.data)
             return Response({'Message': 'No cart found with status Open'},
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
         cart = open_cart[0]
-        cart.status = Cart.STATUS_CHOICES.PROCESSED
+        cart.status = Cart.PROCESSED
         tmp_status, payment_details, shipping_address = Order.calculate_status_for_new_order()
         serializer.save(product_list=cart, customer=self.request.user,
                         order_status=tmp_status, payment_details=payment_details,
@@ -401,23 +401,26 @@ class OrderPayment(generics.CreateAPIView):
         return OrderSerializer
 
     def get_queryset(self):
-        return Order.objects.filter(id=self.kwargs.get('pk')).prefetch_related('product_list').prefetch_related(
-            'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
+        return Order.objects.filter(id=self.kwargs.get('pk'))
+    # .prefetch_related('product_list').prefetch_related(
+    #             'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
 
     def calculate_amount_in_stock(self, order):
-        cart = get_object_or_404(Cart, pk=order[0].product_list)
+        cart = Cart.objects.filter(id=order.product_list.id)
+        if not cart[0].status == Cart.PROCESSED:
+            raise Response({'Message': 'Wrong cart status'})
+        items = cart.prefetch_related('cart_items').all()
         cart_items = cart.prefetch_related(
-            Prefetch('cart_items',
-                     queryset=CartItem.objects.select_related('product'),
-                     to_attr='item'))
+            Prefetch('cart_items', queryset=CartItem.objects.select_related('product')))
         for item in cart_items:
+            i = item
             cart_item_serializer = self.get_serializer(data={"amount": item.amount, "product": item.product_id})
             cart_item_serializer.is_valid(raise_exception=True)
             amount_in_stock = item.product.amount_in_stock - item.amount
             item.product.update(amount_in_stock=amount_in_stock)
 
     def post(self, request, *args, **kwargs):
-        order = self.get_queryset()
+        order = self.get_object()
         self.calculate_amount_in_stock(order)
         response = [
             {

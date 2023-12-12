@@ -10,8 +10,8 @@ def user():
 
 @pytest.fixture
 def user2():
-    user = UserFactory()
-    return user
+    user2 = UserFactory()
+    return user2
 
 
 @pytest.fixture

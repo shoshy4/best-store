@@ -31,5 +31,7 @@ def categories(admin):
     categories = []
     for i in range(4):
         category = CategoryFactory()
+        category.id = i + 1
+        category.save()
         categories.append(category)
     return categories

@@ -8,7 +8,7 @@ admin.site.register(Product)
 
 class ItemInline(admin.StackedInline):
     model = CartItem
-    extra = 5
+    extra = 1
 
 
 class CartAdmin(admin.ModelAdmin):

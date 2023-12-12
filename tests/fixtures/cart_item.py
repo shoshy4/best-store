@@ -23,3 +23,4 @@ def non_empty_cart(user2, cart, products):
         cart_item = CartItemFactory(customer=user2, id=i, cart=cart, product=products[i-1])
         cart_items.append(cart_item)
     return cart_items
+

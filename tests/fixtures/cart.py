@@ -5,8 +5,9 @@ from tests.factory.cart import CartFactory
 
 @pytest.fixture
 def cart(user2):
-    cart = CartFactory(customer=user2, status=Cart.STATUS_CHOICES.OPEN)
-    cart.id = 1
+    cart = CartFactory(customer=user2, status=Cart.OPEN)
+    cart.id = 7
+    print(cart)
     cart.save()
     return cart
 
@@ -20,10 +21,10 @@ def cart_unauth():
 @pytest.fixture
 def closed_carts(user2):
     cart1 = CartFactory(customer=user2)
-    cart1.id = 4
+    cart1.id = 1
     cart1.save()
     carts = [cart1]
-    for i in range(1, 4):
-        cart = CartFactory(customer=user2, id=i, status=Cart.STATUS_CHOICES.CLOSED)
+    for i in range(2, 5):
+        cart = CartFactory(customer=user2, id=i, status=Cart.CLOSED)
         carts.append(cart)
     return carts

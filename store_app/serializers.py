@@ -45,11 +45,11 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     name = serializers.CharField()
-    products = ProductSerializer()
+    # product = ProductSerializer()
 
     class Meta:
         model = Category
-        fields = ['name', 'products']
+        fields = ['name']
 
     def get_products(self, obj):
         products = obj.product_set.all()
@@ -61,7 +61,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
 
     def validate(self, data):
-        product = get_object_or_404(Product, pk=data["product"])
+        product = get_object_or_404(Product, pk=data["product"].id)
         if product.amount_in_stock < data["amount"]:
             raise serializers.ValidationError("You are trying to add more than exists of this product")
         if product.amount_in_stock == 0:

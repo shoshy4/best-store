@@ -11,16 +11,9 @@ def product(category):
 
 
 @pytest.fixture
-def products_category1(category1):
-    product1 = ProductFactory(category=category1, id=1)
-    product2 = ProductFactory(category=category1, id=2)
-    products = [product1, product2]
-    return products
-
-
-@pytest.fixture
 def product_not_categorized():
     product = ProductFactory()
+    product.save()
     return product
 
 
@@ -28,6 +21,10 @@ def product_not_categorized():
 def products(categories):
     products = []
     for i in range(1, 4):
-        product = ProductFactory(category=categories[i-1], id=i)
+        product = ProductFactory()
+        product.id = i
+        product.save()
+        product.category.add(categories[i-1])
+        product.save()
         products.append(product)
     return products
