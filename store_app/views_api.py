@@ -43,7 +43,12 @@ class ProductCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = ProductFilter
-    queryset = Product.objects.prefetch_related('category').prefetch_related('feedback').aggregate(Avg('rate'))
+    queryset = Product.objects.prefetch_related('category')\
+        # .prefetch_related(
+        # Prefetch('feedback',
+        #          queryset=Feedback.objects.aggregate(
+        #              Avg('feedback__rate'),
+        #              to_attr='name')))
 
 
 class OrderList(generics.ListAPIView):
@@ -60,7 +65,12 @@ class OrderList(generics.ListAPIView):
 class ProductUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminPermission]
     serializer_class = ProductSerializer
-    queryset = Product.objects.prefetch_related('category').prefetch_related('feedback').aggregate(Avg('rate'))
+    queryset = Product.objects.prefetch_related('category')\
+        # .prefetch_related(
+        # Prefetch('feedback',
+        #          queryset=Feedback.objects.aggregate(
+        #              Avg('feedback__rate'),
+        #              to_attr='name')))
 
 
 class CartItemCreateList(generics.ListCreateAPIView):
@@ -83,7 +93,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         data = request.data
         product = Product.objects.filter(product=data["product"])
-        data["price"] = data["amount"]*product.price
+        data["price"] = data["amount"] * product.price
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.STATUS_CHOICES.OPEN) |
@@ -114,7 +124,7 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         if "amount" in request.data:
             instance.cart.total_price -= instance.price
-            instance.cart.total_price += request.data["amount"]*instance.product.price
+            instance.cart.total_price += request.data["amount"] * instance.product.price
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()

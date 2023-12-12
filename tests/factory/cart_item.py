@@ -11,6 +11,6 @@ class CartItemFactory(factory.django.DjangoModelFactory):
         model = CartItem
 
     product = factory.SubFactory(ProductFactory)
-    amount = factory.fuzzy.FuzzyInteger()
-    price = factory.fuzzy.FuzzyDecimal()
+    amount = factory.fuzzy.FuzzyInteger(low=0, high=1000)
+    price = factory.fuzzy.FuzzyDecimal(low=0, high=1000)
     cart = factory.SubFactory(CartFactory)

@@ -25,13 +25,13 @@ urlpatterns = [
          name="order_change_status_api"),
     path('order/<int:pk>/approve_receipt/', OrderReceiving.as_view(),
          name="order_receiving_api"),
+    path('order/<int:pk>/payment/', OrderPayment.as_view(), name="order_payment_api"),
     path('payment-details/', PaymentDetailsCreateList.as_view(), name="payment_details_list_create_api"),
     path('payment-details/<int:pk>/', PaymentDetailsUpdateDetailRemove.as_view(),
          name="payment_details_update_detail_remove_api"),
     path('shipping-address/', ShippingAddressCreateList.as_view(), name="shipping_address_list_create_api"),
     path('shipping-address/<int:pk>/', ShippingAddressUpdateDetailRemove.as_view(),
          name="shipping_address_update_detail_remove_api"),
-    path('order/<int:pk>/payment/', OrderPayment.as_view(), name="order_payment_api"),
 ]
 
 if settings.DEBUG:

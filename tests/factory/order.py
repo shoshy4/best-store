@@ -16,7 +16,7 @@ class OrderFactory(factory.django.DjangoModelFactory):
 
     customer = factory.SubFactory(UserFactory)
     product_list = factory.SubFactory(CartFactory)
-    total_price = factory.fuzzy.FuzzyDecimal()
+    total_price = factory.fuzzy.FuzzyDecimal(low=0, high=100000)
     shipping_address = factory.SubFactory(ShippingAddressFactory)
     payment_details = factory.SubFactory(PaymentDetailsFactory)
     order_status = factory.fuzzy.FuzzyChoice(STATUS_CODES)

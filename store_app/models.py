@@ -103,11 +103,11 @@ class Order(models.Model):
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     product_list = models.OneToOneField(Cart, related_name="cart", on_delete=models.CASCADE)
-    total_price = models.DecimalField(max_digits=7, decimal_places=2)
+    total_price = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     shipping_address = models.ForeignKey(ShippingAddress, related_name='shipping_address', on_delete=models.CASCADE,
                                          blank=True, null=True)
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
-    order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=1)
+    order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=IN_PROCESS)
     paid = models.BooleanField(default=False)
     created_date = models.DateTimeField(default=timezone.now)
 

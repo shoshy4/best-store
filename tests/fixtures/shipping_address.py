@@ -11,6 +11,14 @@ def shipping_address(user2):
 
 
 @pytest.fixture
+def shipping_address2(user2):
+    shipping_address = ShippingAddressFactory(customer=user2)
+    shipping_address.id = 2
+    shipping_address.save()
+    return shipping_address
+
+
+@pytest.fixture
 def shipping_address_unauth():
     shipping_address = ShippingAddressFactory()
     return shipping_address

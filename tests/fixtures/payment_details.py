@@ -11,12 +11,6 @@ def payment_details(user2):
 
 
 @pytest.fixture
-def payment_details_unauth():
-    payment_details = PaymentDetailsFactory()
-    return payment_details
-
-
-@pytest.fixture
 def few_payment_details(user2):
     payment_details = []
     payment1 = PaymentDetailsFactory(customer=user2)

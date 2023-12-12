@@ -21,9 +21,15 @@ def category(admin):
 
 
 @pytest.fixture
-def categories(user2):
+def category1(admin):
+    category = CategoryFactory(id=1)
+    return category
+
+
+@pytest.fixture
+def categories(admin):
     categories = []
-    for ix in range(4):
+    for i in range(4):
         category = CategoryFactory()
         categories.append(category)
     return categories

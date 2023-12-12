@@ -11,7 +11,7 @@ class ShippingAddressFactory(factory.django.DjangoModelFactory):
         model = ShippingAddress
 
     street_address = factory.fuzzy.FuzzyText()
-    city = factory.fuzzy.FuzzyText(length=3)
+    city = factory.fuzzy.FuzzyText()
     state = factory.fuzzy.FuzzyText()
     zip_code = factory.fuzzy.FuzzyText(length=10)
     customer = factory.SubFactory(UserFactory)

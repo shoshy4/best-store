@@ -12,4 +12,4 @@ class CartFactory(factory.django.DjangoModelFactory):
 
     customer = factory.SubFactory(UserFactory)
     status = factory.fuzzy.FuzzyChoice(STATUS_CODES)
-    total_price = factory.fuzzy.FuzzyDecimal()
+    total_price = factory.fuzzy.FuzzyDecimal(low=0, high=100000)
