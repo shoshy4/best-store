@@ -4,7 +4,8 @@ from tests.factory.product import ProductFactory
 
 @pytest.fixture
 def product(category):
-    product = ProductFactory(category=category)
+    product = ProductFactory()
+    product.category.add(category)
     product.id = 1
     product.save()
     return product

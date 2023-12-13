@@ -15,19 +15,19 @@ def category_user(user2):
 
 
 @pytest.fixture
-def category(admin):
+def category():
     category = CategoryFactory()
     return category
 
 
 @pytest.fixture
-def category1(admin):
+def category1():
     category = CategoryFactory(id=1)
     return category
 
 
 @pytest.fixture
-def categories(admin):
+def categories():
     categories = []
     for i in range(4):
         category = CategoryFactory()
