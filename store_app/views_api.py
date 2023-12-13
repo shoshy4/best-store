@@ -43,8 +43,8 @@ class ProductCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = ProductFilter
-    queryset = Product.objects.prefetch_related('category') \
-        # .prefetch_related(
+    queryset = Product.objects.prefetch_related('category').annotate(feedback_rate=Avg('feedback__rate'))
+    # .prefetch_related('feedback').
     # Prefetch('feedback',
     #          queryset=Feedback.objects.aggregate(
     #              Avg('feedback__rate'),
