@@ -123,11 +123,11 @@ def test_product_user_create(api_client_auth, category):
 
 @pytest.mark.django_db
 def test_product_update(api_client_admin, product):
-    url = reverse('product_list_create_api', kwargs={'pk': product.id})
+    url = reverse('product_update_detail_remove_api', kwargs={'pk': product.id})
     client, _ = api_client_admin
-    response = client.patch(url, {"price": 8.90}, format='json')
+    response = client.patch(url, {"price": 8.9}, format='json')
     assert response.status_code == 200
-    assert response.data["price"] == 8.90
+    assert response.data["price"] == 8.9
 
 
 @pytest.mark.django_db

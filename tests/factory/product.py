@@ -14,4 +14,4 @@ class ProductFactory(factory.django.DjangoModelFactory):
     price = factory.fuzzy.FuzzyDecimal(low=0, high=1000)
     amount_in_stock = factory.fuzzy.FuzzyInteger(low=0, high=100000)
     image = factory.django.ImageField()
-    category = factory.SubFactory(CategoryFactory)
+    # category = factory.SubFactory(CategoryFactory)
