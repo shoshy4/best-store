@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
-from django.utils import timezone
+from django.utils import timezone, dateformat
 from django.utils.translation import gettext_lazy as _
 
 
@@ -27,9 +27,6 @@ class Product(models.Model):
     amount_in_stock = models.IntegerField(validators=[validate_above_zero])
     image = models.ImageField(upload_to='images/', blank=True, null=True)
     category = models.ManyToManyField(Category, related_name='product', blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.name}: ${self.price}"
 
 
 class Cart(models.Model):
@@ -90,7 +87,7 @@ class Order(models.Model):
         (PAID, "Paid. In process"),
         (SENT, "Sent to customer's shipping address"),
         (DELIVERED, "Delivered"),
-        (RECEIVED, "Received")
+        (RECEIVED, "Received"),
     )
 
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
@@ -101,30 +98,18 @@ class Order(models.Model):
     payment_details = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, blank=True, null=True)
     order_status = models.IntegerField(choices=ORDER_STATUS_CHOICES, default=NOT_COMPLETED)
     paid = models.BooleanField(default=False)
-    created_date = models.DateTimeField(default=timezone.now)
-
-    def calculate_status_for_new_order(self):
-        tmp_status = Order.IN_PROCESS
-        payment_details = PaymentDetails.objects.filter(default=True)
-        shipping_address = ShippingAddress.objects.filter(default=True)
-        if not shipping_address or not payment_details:
-            tmp_status = Order.NOT_COMPLETED
-        if shipping_address:
-            shipping_address = shipping_address[0]
-        if payment_details:
-            payment_details = payment_details[0]
-        return tmp_status, payment_details, shipping_address
+    created_date = models.DateTimeField(default=timezone.now, blank=True, null=True)
 
 
 class Feedback(models.Model):
     RATE_CHOICES = (
-        (5, "excellent"),
-        (4, "very good"),
-        (3, "good"),
-        (2, "not bad"),
-        (1, "bad"),
+        ('5', "excellent"),
+        ('4', "very good"),
+        ('3', "good"),
+        ('2', "not bad"),
+        ('1', "bad"),
     )
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='feedback')
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)
-    rate = models.PositiveSmallIntegerField(choices=RATE_CHOICES, null=True)
+    rate = models.IntegerField(choices=RATE_CHOICES, null=True)
     text = models.TextField(blank=True, null=True)

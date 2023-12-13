@@ -21,8 +21,8 @@ def product_not_categorized():
 @pytest.fixture
 def products(categories):
     products = []
-    for i in range(1, 4):
-        product = ProductFactory()
+    for i in range(1, 5):
+        product = ProductFactory(price=5*i)
         product.id = i
         product.save()
         product.category.add(categories[i-1])

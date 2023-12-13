@@ -13,6 +13,15 @@ def cart(user2):
 
 
 @pytest.fixture
+def cart_filled(user2):
+    cart = CartFactory(customer=user2, status=Cart.PROCESSED, total_price=80)
+    cart.id = 7
+    print(cart)
+    cart.save()
+    return cart
+
+
+@pytest.fixture
 def cart_unauth():
     cart = CartFactory()
     return cart

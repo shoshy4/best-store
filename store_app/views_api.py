@@ -1,7 +1,11 @@
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.core import serializers
-from django.db.models import Prefetch, Q, Avg, Sum
+from django.db.models import Prefetch, Q, Avg, Sum, Count
+from django.forms import model_to_dict
 from django_filters import rest_framework as filters
+from rest_framework.exceptions import APIException
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -14,6 +18,13 @@ from .serializers import CategorySerializer, ProductSerializer, CartSerializer, 
     PaymentDetailsSerializer, ShippingAddressSerializer, OrderSerializer, FeedbackSerializer, UserSerializer, \
     OrderAdminSerializer
 from rest_framework import generics, status
+
+IN_PROCESS = 1
+NOT_COMPLETED = 2
+PAID = 3
+SENT = 4
+DELIVERED = 5
+RECEIVED = 6
 
 
 class CategoryCreateList(generics.ListCreateAPIView):
@@ -43,12 +54,11 @@ class ProductCreateList(generics.ListCreateAPIView):
     pagination_class = PageNumberPagination
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = ProductFilter
-    queryset = Product.objects.prefetch_related('category').annotate(feedback_rate=Avg('feedback__rate'))
-    # .prefetch_related('feedback').
-    # Prefetch('feedback',
-    #          queryset=Feedback.objects.aggregate(
-    #              Avg('feedback__rate'),
-    #              to_attr='name')))
+
+    def get_queryset(self):
+        products = Product.objects.prefetch_related('category')
+        products_with_rating = (products.prefetch_related('feedback').annotate(feedback_rate=Avg('feedback__rate')))
+        return products_with_rating
 
 
 class OrderList(generics.ListAPIView):
@@ -83,8 +93,8 @@ class CartItemCreateList(generics.ListCreateAPIView):
         return CartSerializer
 
     def get_queryset(self):
-        cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.OPEN) |
-                                                                      Q(status=Cart.PROCESSED))
+        cart = Cart.objects.filter((Q(status=Cart.OPEN) |
+                                             Q(status=Cart.PROCESSED)), customer=self.request.user)
         return cart.prefetch_related(
             Prefetch('cart_items',
                      queryset=CartItem.objects.select_related('product'),
@@ -93,7 +103,7 @@ class CartItemCreateList(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         data = request.data
         product = get_object_or_404(Product, pk=data["product"])
-        data["price"] = data["amount"] * product.price
+        price = data["amount"] * product.price
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         cart = Cart.objects.filter(customer=self.request.user).filter(Q(status=Cart.OPEN) |
@@ -103,10 +113,10 @@ class CartItemCreateList(generics.ListCreateAPIView):
             cart = Cart.objects.create(customer=self.request.user)
         else:
             cart = cart[0]
-        cart.total_price += data["price"]
+        cart.total_price += price
         cart.save()
         # perform_create method
-        serializer.save(cart=cart, price=data["price"])
+        serializer.save(cart=cart, price=price)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -117,14 +127,18 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     pagination_class = PageNumberPagination
 
     def get_queryset(self):
-        return CartItem.objects.filter(cart__customer=self.request.user, cart__status="O")
+        return CartItem.objects.filter(cart__customer=self.request.user, cart__status=Cart.OPEN)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         if "amount" in request.data:
             instance.cart.total_price -= instance.price
-            instance.cart.total_price += request.data["amount"] * instance.product.price
+            request.data["price"] = request.data["amount"] * instance.product.price
+            instance.cart.total_price += request.data["price"]
+            instance.price = request.data["amount"] * instance.product.price
+            instance.cart.save()
+            instance.save()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -150,6 +164,24 @@ class OrderCreateList(generics.ListCreateAPIView):
     def get_queryset(self):
         return Order.objects.filter(customer=self.request.user).order_by('-created_date')
 
+    def total_price_calculation(self, cart):
+        p = CartItem.objects.filter(cart=cart).aggregate(sum=Sum('price'))
+        cart.total_price = p['sum']
+        cart.save()
+        return p['sum']
+
+    def calculate_status_for_new_order(self):
+        tmp_status = Order.IN_PROCESS
+        payment_details = PaymentDetails.objects.filter(default=True)
+        shipping_address = ShippingAddress.objects.filter(default=True)
+        if not shipping_address or not payment_details:
+            tmp_status = Order.NOT_COMPLETED
+        if shipping_address:
+            shipping_address = shipping_address[0]
+        if payment_details:
+            payment_details = payment_details[0]
+        return tmp_status, payment_details, shipping_address
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -160,10 +192,12 @@ class OrderCreateList(generics.ListCreateAPIView):
                             status=status.HTTP_400_BAD_REQUEST, headers=headers)
         cart = open_cart[0]
         cart.status = Cart.PROCESSED
-        tmp_status, payment_details, shipping_address = Order.calculate_status_for_new_order()
+        total_price = self.total_price_calculation(cart)
+        cart.save()
+        tmp_status, payment_details, shipping_address = self.calculate_status_for_new_order()
         serializer.save(product_list=cart, customer=self.request.user,
                         order_status=tmp_status, payment_details=payment_details,
-                        shipping_address=shipping_address)
+                        shipping_address=shipping_address, total_price=total_price)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -192,15 +226,19 @@ class OrderUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
             cart = get_object_or_404(Cart, self.request.data.get("product_list"))
             cart.total_price = CartItem.objects.filter(cart=cart).aggregate(Sum('price'))
             cart.save()
+            return cart.total_price
+        return None
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         tmp_status = self.calculate_new_status(instance)
-        self.total_price_calculation()
+        total_price = self.total_price_calculation()
+        if total_price is None:
+            total_price = instance.total_price
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        serializer.save(order_status=tmp_status)
+        serializer.save(order_status=tmp_status, total_price=total_price)
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
         return Response(serializer.data)
@@ -245,7 +283,7 @@ class PaymentDetailsCreateList(generics.ListCreateAPIView):
         default_value = False
         if not payment_details:
             default_value = True
-        elif payment_details[0].default and "default" in data and data["default"]:
+        elif payment_details[0].default and self.request.data.get("default") is not None and data["default"]:
             payment_details.update(default=False)
             default_value = True
         return default_value
@@ -268,7 +306,7 @@ class PaymentDetailsUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
         return PaymentDetails.objects.filter(customer=self.request.user)
 
     def update_default(self, data):
-        if "default" in data:
+        if self.request.data.get("default") is not None:
             default_value = data["default"]
             if default_value:
                 PaymentDetails.objects.all(customer=self.request.user).update(default=False)
@@ -367,8 +405,9 @@ class FeedbackCreateList(generics.ListCreateAPIView):
     def check_if_paid_for_product(self, serializer, data):
         paid_orders = Order.objects.filter(customer=self.request.user, paid=True)
         for order in paid_orders:
-            cart = get_object_or_404(Cart, pk=order.product_list_id)
-            if cart.cart_item_set.all().filter(id=data.get(id)).exists():
+            cart_items = CartItem.objects.filter(cart=order.product_list)
+            cart = Cart.objects.prefetch_related('cart_items').filter(id=order.product_list_id)
+            if cart_items.all().filter(product_id=self.kwargs.get('pk')).exists():
                 self.perform_create(serializer)
                 headers = self.get_success_headers(serializer.data)
                 return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -398,26 +437,26 @@ class OrderPayment(generics.CreateAPIView):
     permission_classes = [IsOwnerOrAdminPermission]
 
     def get_serializer_class(self):
-        return OrderSerializer
+        return CartItemSerializer
 
     def get_queryset(self):
         return Order.objects.filter(id=self.kwargs.get('pk'))
+
     # .prefetch_related('product_list').prefetch_related(
     #             'customer').prefetch_related('shipping_address').prefetch_related('payment_details')
 
     def calculate_amount_in_stock(self, order):
         cart = Cart.objects.filter(id=order.product_list.id)
         if not cart[0].status == Cart.PROCESSED:
-            raise Response({'Message': 'Wrong cart status'})
-        items = cart.prefetch_related('cart_items').all()
-        cart_items = cart.prefetch_related(
-            Prefetch('cart_items', queryset=CartItem.objects.select_related('product')))
-        for item in cart_items:
-            i = item
-            cart_item_serializer = self.get_serializer(data={"amount": item.amount, "product": item.product_id})
+            raise APIException("Wrong cart status")
+        cart.update(status=Cart.CLOSED)
+        items = CartItem.objects.filter(cart=cart[0]).select_related('product').all()
+        for item in items:
+            cart_item_serializer = self.get_serializer(data={"amount": item.amount, "product": item.product_id},
+                                                       context={'id': id})
             cart_item_serializer.is_valid(raise_exception=True)
-            amount_in_stock = item.product.amount_in_stock - item.amount
-            item.product.update(amount_in_stock=amount_in_stock)
+            item.product.amount_in_stock -= item.amount
+            item.product.save()
 
     def post(self, request, *args, **kwargs):
         order = self.get_object()
@@ -425,13 +464,30 @@ class OrderPayment(generics.CreateAPIView):
         response = [
             {
                 "Message": "Your payment has been processed successfully. Your order has been confirmed",
-                "Order_number": order[0].id,
+                "Order_number": order.id,
             },
-            {"Order information":
-                {
-                    serializers.serialize('json', order)
-                }
+            {
+                "Order information":
+                    {
+                        "customer": {
+                            "name": order.customer.username
+                        },
+                        "product_list":
+                            {
+                                "cart_items": {
+                                    order.product_list.cart_items.values().filter(cart=order.product_list)
+                                }
+
+                            },
+                        "shipping_address": model_to_dict(order.shipping_address),
+                        "payment_details": model_to_dict(order.payment_details),
+                        "total_price": order.total_price,
+                        "order_status": order.get_order_status_display(),
+                        "created_date": order.created_date
+                    }
             }
         ]
-        order.update(order_status=Order.PAID, paid=True)
+        order.order_status = PAID
+        order.paid = True
+        order.save()
         return Response(response, status=status.HTTP_200_OK)

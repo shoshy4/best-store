@@ -35,14 +35,6 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
-class ProductSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(required=False, use_url=True)
-
-    class Meta:
-        model = Product
-        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category']
-
-
 class CategorySerializer(serializers.ModelSerializer):
     name = serializers.CharField()
     # product = ProductSerializer()
@@ -57,11 +49,21 @@ class CategorySerializer(serializers.ModelSerializer):
         return response
 
 
+class ProductSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, use_url=True)
+    category = CategorySerializer(many=True)
+
+    class Meta:
+        model = Product
+        fields = ['name', 'description', 'price', 'amount_in_stock', 'image', 'category']
+
+
 class CartItemSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
 
     def validate(self, data):
-        product = get_object_or_404(Product, pk=data["product"].id)
+        cart_item = get_object_or_404(CartItem, pk=self.context.get('id'))
+        product = get_object_or_404(Product, pk=cart_item.product_id)
         if product.amount_in_stock < data["amount"]:
             raise serializers.ValidationError("You are trying to add more than exists of this product")
         if product.amount_in_stock == 0:
@@ -77,7 +79,7 @@ class CartSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     cart_items = CartItemSerializer(many=True)
     status = serializers.CharField(source='get_status_display', read_only=True)
-    total_price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True, source='cart.total_price')
+    total_price = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
 
     class Meta:
         model = Cart
@@ -107,7 +109,6 @@ class OrderSerializer(serializers.ModelSerializer):
     order_status = serializers.CharField(source='get_order_status_display', read_only=True)
     total_price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True, source='order.total_price')
     paid = serializers.BooleanField(read_only=True, source='order.paid')
-    created_date = serializers.DateTimeField(format="%m/%d/%Y %H:%M")
 
     class Meta:
         model = Order
