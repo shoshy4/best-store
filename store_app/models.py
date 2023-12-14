@@ -103,11 +103,11 @@ class Order(models.Model):
 
 class Feedback(models.Model):
     RATE_CHOICES = (
-        ('5', "excellent"),
-        ('4', "very good"),
-        ('3', "good"),
-        ('2', "not bad"),
-        ('1', "bad"),
+        (5, "excellent"),
+        (4, "very good"),
+        (3, "good"),
+        (2, "not bad"),
+        (1, "bad"),
     )
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='feedback')
     customer = models.ForeignKey('auth.User', on_delete=models.CASCADE)

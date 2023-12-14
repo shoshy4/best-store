@@ -14,7 +14,7 @@ def cart(user2):
 @pytest.fixture
 def cart_filled(user2):
     cart = CartFactory(customer=user2, status=Cart.PROCESSED, total_price=80)
-    cart.id = 7
+    # cart.id = 7
     cart.save()
     return cart
 

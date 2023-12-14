@@ -13,8 +13,8 @@ def cart_item(product, cart):
 @pytest.fixture
 def cart_filled_items(cart_filled, products):
     cart_items = []
-    for i in range(1, 5):
-        cart_item = CartItemFactory(id=i, cart=cart_filled, product=products[i - 1])
+    for product in products:
+        cart_item = CartItemFactory(cart=cart_filled, product=product)
         cart_items.append(cart_item)
     return cart_items
 

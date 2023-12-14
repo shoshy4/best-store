@@ -178,7 +178,8 @@ def test_feedback_wrong_user_create(api_client_user, product):
 
 
 @pytest.mark.django_db
-def test_feedback_user_create(api_client_auth, product):
+def test_feedback_user_create(api_client_auth, order_paid):
+    product = order_paid.product_list.cart_items.first().product
     url = reverse('feedback_list_create_api', kwargs={'pk': product.id})
     client, _ = api_client_auth
     payload = {"rate": 5,
