@@ -7,7 +7,6 @@ from tests.factory.cart import CartFactory
 def cart(user2):
     cart = CartFactory(customer=user2, status=Cart.OPEN)
     cart.id = 7
-    print(cart)
     cart.save()
     return cart
 
@@ -16,7 +15,6 @@ def cart(user2):
 def cart_filled(user2):
     cart = CartFactory(customer=user2, status=Cart.PROCESSED, total_price=80)
     cart.id = 7
-    print(cart)
     cart.save()
     return cart
 

@@ -181,8 +181,7 @@ def test_feedback_wrong_user_create(api_client_user, product):
 def test_feedback_user_create(api_client_auth, product):
     url = reverse('feedback_list_create_api', kwargs={'pk': product.id})
     client, _ = api_client_auth
-    payload = {"product": product.id,
-               "rate": 5,
+    payload = {"rate": 5,
                "text": "delicious"}
     response = client.post(url, payload, format='json')
     assert response.status_code == 201
@@ -247,8 +246,7 @@ def test_cart_item_create(api_client_auth, product, cart):
     url = reverse('item_create_list_remove_api')
     client, _ = api_client_auth
     payload = {"product": product.id,
-               "amount": 5,
-               "cart": cart.id}
+               "amount": 5}
     response = client.post(url, payload, format='json')
     assert response.status_code == 201
     assert "amount" in response.data
@@ -260,7 +258,7 @@ def test_cart_item_list(api_client_auth, cart):
     client, _ = api_client_auth
     response = client.get(url)
     assert response.status_code == 200
-    assert 'amount' in response.data
+    assert response.data['count'] == 2
 
 
 @pytest.mark.django_db
@@ -282,7 +280,7 @@ def test_cart_item_update(api_client_auth, cart_item, product, cart):
 
 @pytest.mark.django_db
 def test_cart_item_detail(api_client_auth, cart_item):
-    url = reverse('item_update_detail_remove_api', kwargs={'pk': 7})
+    url = reverse('item_update_detail_remove_api', kwargs={'pk': cart_item.id})
     client, _ = api_client_auth
     response = client.get(url)
     assert response.status_code == 200
@@ -307,12 +305,10 @@ def test_order_list(api_client_auth, orders):
 
 
 @pytest.mark.django_db
-def test_order_create(api_client_auth, user2, cart, shipping_address, payment_details):
+def test_order_create(api_client_auth, user2, cart_filled, shipping_address, payment_details):
     url = reverse('order_list_create_api')
     client, _ = api_client_auth
-    payload = {"customer": user2.id,
-               "product_list": cart.id,
-               "payment_details": payment_details.id}
+    payload = {"payment_details": payment_details.id}
     response = client.post(url, payload, format='json')
     assert response.status_code == 400
 
@@ -372,7 +368,7 @@ def test_order_user_receiving(api_client_user, order):
 
 
 @pytest.mark.django_db
-def test_order_payment(api_client_auth, order_processed):
+def test_order_payment(api_client_auth, order_processed, cart_filled):
     url = reverse('order_payment_api', kwargs={'pk': order_processed.id})
     client, _ = api_client_auth
     response = client.post(url, format='json')
