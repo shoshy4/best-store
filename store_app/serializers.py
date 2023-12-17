@@ -62,8 +62,13 @@ class CartItemSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
 
     def validate(self, data):
-        cart_item = get_object_or_404(CartItem, pk=self.context.get('id'))
-        product = get_object_or_404(Product, pk=cart_item.product_id)
+        if "product" in data:
+            product_id = data["product"].id
+        else:
+            id = self.context.get('id')
+            cart_item = get_object_or_404(CartItem, pk=id)
+            product_id = cart_item.product.id
+        product = get_object_or_404(Product, pk=product_id)
         if product.amount_in_stock < data["amount"]:
             raise serializers.ValidationError("You are trying to add more than exists of this product")
         if product.amount_in_stock == 0:

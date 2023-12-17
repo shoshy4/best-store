@@ -14,9 +14,10 @@ def order(user2, cart, shipping_address, payment_details):
 
 
 @pytest.fixture
-def order_processed(user2, cart_filled, shipping_address, payment_details):
+def order_processed(user2, cart_filled_items, shipping_address, payment_details):
+    cart_filled = cart_filled_items[0].cart
     order = OrderFactory(customer=user2, product_list=cart_filled, shipping_address=shipping_address,
-                         payment_details=payment_details)
+                         payment_details=payment_details, order_status=Order.IN_PROCESS)
     order.id = 1
     order.save()
     return order

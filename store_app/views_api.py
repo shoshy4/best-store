@@ -132,6 +132,8 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial, context={'id': instance.id})
+        serializer.is_valid(raise_exception=True)
         if "amount" in request.data:
             instance.cart.total_price -= instance.price
             request.data["price"] = request.data["amount"] * instance.product.price
@@ -139,8 +141,6 @@ class CartItemUpdateDetailRemove(generics.RetrieveUpdateDestroyAPIView):
             instance.price = request.data["amount"] * instance.product.price
             instance.cart.save()
             instance.save()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
         serializer.save()
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
@@ -452,8 +452,9 @@ class OrderPayment(generics.CreateAPIView):
         cart.update(status=Cart.CLOSED)
         items = CartItem.objects.filter(cart=cart[0]).select_related('product').all()
         for item in items:
-            cart_item_serializer = self.get_serializer(data={"amount": item.amount, "product": item.product_id},
-                                                       context={'id': id})
+            cart_item_serializer = self.get_serializer(instance=item, data={"amount": item.amount,
+                                                                            "product": item.product_id},
+                                                       context={'id': item.id})
             cart_item_serializer.is_valid(raise_exception=True)
             item.product.amount_in_stock -= item.amount
             item.product.save()
